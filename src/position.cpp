@@ -17,38 +17,87 @@ namespace fvw
         platform.resize(nTimesteps);
     }
 
-    Vec3 &PositionData::leadAt(int b, int t, int i)
+    // 只读访问器
+    const Vec3 &PositionData::leadAt(int b, int t, int i) const
     {
         return lead[b * nTimesteps * nTrail + t * nTrail + i];
     }
 
-    Vec3 &PositionData::quarterAt(int b, int t, int i)
+    const Vec3 &PositionData::quarterAt(int b, int t, int i) const
     {
         return quarter[b * nTimesteps * nTrail + t * nTrail + i];
     }
 
-    Vec3 &PositionData::trailAt(int b, int t, int i)
+    const Vec3 &PositionData::trailAt(int b, int t, int i) const
     {
         return trail[b * nTimesteps * nTrail + t * nTrail + i];
     }
 
-    Vec3 &PositionData::collocAt(int b, int t, int i)
+    const Vec3 &PositionData::collocAt(int b, int t, int i) const
     {
         return colloc[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    Vec3 &PositionData::boundAt(int b, int t, int i)
+    const Vec3 &PositionData::boundAt(int b, int t, int i) const
     {
         return bound[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    Vec3 &PositionData::endAt(int b, int t, int i)
+    const Vec3 &PositionData::endAt(int b, int t, int i) const
     {
         return end[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    Vec3 &PositionData::hubAt(int t) { return hub[t]; }
-    Vec3 &PositionData::platformAt(int t) { return platform[t]; }
+    const Vec3 &PositionData::hubAt(int t) const
+    {
+        return hub[t];
+    }
+
+    const Vec3 &PositionData::platformAt(int t) const
+    {
+        return platform[t];
+    }
+
+    // 可写访问器
+    Vec3 &PositionData::setLeadAt(int b, int t, int i)
+    {
+        return lead[b * nTimesteps * nTrail + t * nTrail + i];
+    }
+
+    Vec3 &PositionData::setQuarterAt(int b, int t, int i)
+    {
+        return quarter[b * nTimesteps * nTrail + t * nTrail + i];
+    }
+
+    Vec3 &PositionData::setTrailAt(int b, int t, int i)
+    {
+        return trail[b * nTimesteps * nTrail + t * nTrail + i];
+    }
+
+    Vec3 &PositionData::setCollocAt(int b, int t, int i)
+    {
+        return colloc[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &PositionData::setBoundAt(int b, int t, int i)
+    {
+        return bound[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &PositionData::setEndAt(int b, int t, int i)
+    {
+        return end[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &PositionData::setHubAt(int t)
+    {
+        return hub[t];
+    }
+
+    Vec3 &PositionData::setPlatformAt(int t)
+    {
+        return platform[t];
+    }
 
     Vec3 DCMRot(const Vec3 &x, const std::vector<double> &t,
                 const std::vector<double> &A_init, const std::string &rotseq, int rev)
@@ -113,8 +162,8 @@ namespace fvw
         Vec3 hubPos(0.0, 0.0, 90.0);
         for (int t = 0; t < simParams.timesteps; ++t)
         {
-            pos.hubAt(t) = hubPos;
-            pos.platformAt(t) = Vec3(0.0, 0.0, 0.0);
+            pos.setHubAt(t) = hubPos;
+            pos.setPlatformAt(t) = Vec3(0.0, 0.0, 0.0);
         }
 
         // Azimuth
@@ -151,17 +200,17 @@ namespace fvw
                 {
                     std::vector<double> totalRotseq = {geom.twistTrailing[i]};
                     totalRotseq.insert(totalRotseq.end(), bladeRotseq.begin(), bladeRotseq.end());
-                    pos.leadAt(b, t, i) = DCMRot(geom.lead[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
-                    pos.quarterAt(b, t, i) = DCMRot(geom.quarter[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
-                    pos.trailAt(b, t, i) = DCMRot(geom.trail[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
+                    pos.setLeadAt(b, t, i) = DCMRot(geom.lead[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
+                    pos.setQuarterAt(b, t, i) = DCMRot(geom.quarter[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
+                    pos.setTrailAt(b, t, i) = DCMRot(geom.trail[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
                 }
                 for (int i = 0; i < geom.colloc.size(); ++i)
                 {
                     std::vector<double> totalRotseq = {geom.twistShedding[i]};
                     totalRotseq.insert(totalRotseq.end(), bladeRotseq.begin(), bladeRotseq.end());
-                    pos.collocAt(b, t, i) = DCMRot(geom.colloc[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
-                    pos.boundAt(b, t, i) = DCMRot(geom.bound[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
-                    pos.endAt(b, t, i) = DCMRot(geom.end[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
+                    pos.setCollocAt(b, t, i) = DCMRot(geom.colloc[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
+                    pos.setBoundAt(b, t, i) = DCMRot(geom.bound[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
+                    pos.setEndAt(b, t, i) = DCMRot(geom.end[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
                 }
             }
         }

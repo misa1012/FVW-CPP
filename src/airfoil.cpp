@@ -6,14 +6,18 @@
 namespace fvw
 {
 
-    std::vector<AirfoilData> readAirfoils(const std::vector<std::string> &airfoilNames,
-                                          const std::string &dataDir)
+    std::vector<AirfoilData> readAirfoils(const std::string &dataDir, bool verbose)
     {
+        std::vector<std::string> airfoilNames = {"Cylinder1", "Cylinder2", "DU40_A17", "DU35_A17",
+                                                 "DU30_A17", "DU25_A17", "DU21_A17", "NACA64_A17"};
         std::vector<AirfoilData> airfoils(airfoilNames.size());
         for (size_t i = 0; i < airfoilNames.size(); ++i)
         {
             std::string filePath = dataDir + airfoilNames[i] + ".dat";
-            std::cout << "Reading: " << filePath << std::endl;
+            if (verbose)
+            {
+                std::cout << "Reading: " << filePath << std::endl;
+            }
             std::ifstream file(filePath);
             if (!file.is_open())
             {
@@ -79,7 +83,10 @@ namespace fvw
                 }
             }
             file.close();
-            std::cout << "Parsed " << filePath << ", points: " << airfoils[i].aoa.size() << std::endl;
+            if (verbose)
+            {
+                std::cout << "Parsed " << filePath << ", points: " << airfoils[i].aoa.size() << std::endl;
+            }
         }
         return airfoils;
     }

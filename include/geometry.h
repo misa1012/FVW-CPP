@@ -36,6 +36,7 @@ namespace fvw
         std::vector<double> twistShedding;
         std::vector<Vec3> lead, quarter, trail; // Trailing nodes
         std::vector<Vec3> colloc, bound, end;   // Shedding nodes
+        std::vector<int> airfoilIndex;
     };
 
     // 计算叶片几何

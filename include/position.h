@@ -18,14 +18,26 @@ namespace fvw
 
     public:
         PositionData(int nBlades_, int timesteps_, int nTrail_, int nShed_);
-        Vec3 &leadAt(int b, int t, int i);
-        Vec3 &quarterAt(int b, int t, int i);
-        Vec3 &trailAt(int b, int t, int i);
-        Vec3 &collocAt(int b, int t, int i);
-        Vec3 &boundAt(int b, int t, int i);
-        Vec3 &endAt(int b, int t, int i);
-        Vec3 &hubAt(int t);
-        Vec3 &platformAt(int t);
+
+        // 只读访问器
+        const Vec3 &leadAt(int b, int t, int i) const;
+        const Vec3 &quarterAt(int b, int t, int i) const;
+        const Vec3 &trailAt(int b, int t, int i) const;
+        const Vec3 &collocAt(int b, int t, int i) const;
+        const Vec3 &boundAt(int b, int t, int i) const;
+        const Vec3 &endAt(int b, int t, int i) const;
+        const Vec3 &hubAt(int t) const;
+        const Vec3 &platformAt(int t) const;
+
+        // 可写访问器
+        Vec3 &setLeadAt(int b, int t, int i);
+        Vec3 &setQuarterAt(int b, int t, int i);
+        Vec3 &setTrailAt(int b, int t, int i);
+        Vec3 &setCollocAt(int b, int t, int i);
+        Vec3 &setBoundAt(int b, int t, int i);
+        Vec3 &setEndAt(int b, int t, int i);
+        Vec3 &setHubAt(int t);
+        Vec3 &setPlatformAt(int t);
     };
 
     // 方向余弦矩阵旋转

@@ -23,8 +23,9 @@ namespace fvw
     };
 
     // 读取翼型数据
-    std::vector<AirfoilData> readAirfoils(const std::vector<std::string> &airfoilNames,
-                                          const std::string &dataDir = "../data/NREL_files/");
+    std::vector<AirfoilData> readAirfoils(
+        const std::string &dataDir = "../data/NREL_files/",
+        bool verbose = false);
 
 } // namespace fvw
 
