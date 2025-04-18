@@ -42,25 +42,25 @@ namespace fvw
         return cd[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    std::vector<double> computeAoA_tan(const PerformanceData &perf, const VelBCS &velBCS)
-    {
-        std::vector<double> aoa(perf.getBlades() * perf.getTimesteps() * perf.getShed());
-        for (int b = 0; b < perf.getBlades(); ++b)
-        {
-            for (int t = 0; t < perf.getTimesteps(); ++t)
-            {
-                for (int i = 0; i < perf.getShed(); ++i)
-                {
-                    int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
-                    aoa[idx] = std::atan2(-velBCS.at(b, t, i).y, velBCS.at(b, t, i).x) * 180.0 / M_PI;
-                    if (std::isnan(aoa[idx]) || std::abs(aoa[idx]) == 180.0)
-                    {
-                        aoa[idx] = 0.0;
-                    }
-                }
-            }
-        }
-        return aoa;
-    }
+    // std::vector<double> computeAoA_tan(const PerformanceData &perf, const VelBCS &velBCS)
+    // {
+    //     std::vector<double> aoa(perf.getBlades() * perf.getTimesteps() * perf.getShed());
+    //     for (int b = 0; b < perf.getBlades(); ++b)
+    //     {
+    //         for (int t = 0; t < perf.getTimesteps(); ++t)
+    //         {
+    //             for (int i = 0; i < perf.getShed(); ++i)
+    //             {
+    //                 int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+    //                 aoa[idx] = std::atan2(-velBCS.at(b, t, i).y, velBCS.at(b, t, i).x) * 180.0 / M_PI;
+    //                 if (std::isnan(aoa[idx]) || std::abs(aoa[idx]) == 180.0)
+    //                 {
+    //                     aoa[idx] = 0.0;
+    //                 }
+    //             }
+    //         }
+    //     }
+    //     return aoa;
+    // }
 
 } // namespace fvw

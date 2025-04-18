@@ -1,7 +1,7 @@
 #ifndef FVW_PERFORMANCE_H
 #define FVW_PERFORMANCE_H
 
-#include "velocity.h"
+
 #include "utils.h"
 #include <vector>
 
@@ -35,7 +35,7 @@ namespace fvw
         int getShed() const { return nShed; }
     };
 
-    std::vector<double> computeAoA_tan(const PerformanceData &perf, const VelBCS &velBCS);
+    // std::vector<double> computeAoA_tan(const PerformanceData &perf, const VelBCS &velBCS);
 
 } // namespace fvw
 

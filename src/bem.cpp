@@ -3,7 +3,7 @@
 
 namespace fvw
 {
-    void computeAoA(PerformanceData &perf, const VelBCS &velBCS,
+    void computeAoA(PerformanceData &perf,
                     const BladeGeometry &geom, const TurbineParams &turbineParams,
                     const std::vector<double> &a, const std::vector<double> &ap)
     {
@@ -33,7 +33,7 @@ namespace fvw
         }
     }
 
-    void computeBEM(PerformanceData &perf, const VelBCS &velBCS,
+    void computeBEM(PerformanceData &perf,
                     const BladeGeometry &geom, const TurbineParams &turbineParams,
                     const std::vector<AirfoilData> &airfoils)
     {
@@ -95,7 +95,7 @@ namespace fvw
             }
 
             // 计算迎角
-            computeAoA(perf, velBCS, geom, turbineParams, a, ap);
+            computeAoA(perf, geom, turbineParams, a, ap);
 
             // 计算 cl, cd
             for (int b = 0; b < perf.getBlades(); ++b)

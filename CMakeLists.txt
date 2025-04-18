@@ -15,7 +15,6 @@ set(SRC_SOURCES
     src/airfoil.cpp
     src/geometry.cpp
     src/position.cpp
-    src/velocity.cpp
     src/performance.cpp
     src/bem.cpp
     src/wake.cpp

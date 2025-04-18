@@ -1,0 +1,8 @@
+# 忽略构建目录
+build/
+
+# 忽略 VSCode 配置目录
+.vscode/
+
+# 忽略草稿和临时文件目录
+99_draft_and_trash/
