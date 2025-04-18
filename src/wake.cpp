@@ -1,156 +1,166 @@
 #include "wake.h"
 #include <cmath>
+#include <iostream>
+#include <fstream>
+#include <iomanip>
+#include <ctime>
 
 namespace fvw
 {
-
-    WakeData::WakeData(int nBlades, int nTimesteps, int nShed)
+    // The first wake
+    void initializeWake(Wake &wake, const BladeGeometry &geom, const PerformanceData &perf,
+                        const TurbineParams &turbineParams, const PositionData &pos)
     {
-        gamma_shed.resize(nBlades, std::vector<std::vector<double>>(
-                                       nTimesteps, std::vector<double>(nShed, 0.0)));
-        gamma_trail.resize(nBlades, std::vector<std::vector<double>>(
-                                        nTimesteps, std::vector<double>(nShed + 1, 0.0)));
-        wake_pos_shed.resize(nBlades, std::vector<std::vector<Vec3>>(
-                                          nTimesteps, std::vector<Vec3>(nShed, Vec3(0.0, 0.0, 0.0))));
-        wake_pos_trail.resize(nBlades, std::vector<std::vector<Vec3>>(
-                                           nTimesteps, std::vector<Vec3>(nShed + 1, Vec3(0.0, 0.0, 0.0))));
-    }
+        wake.nodes.clear();
+        wake.lines.clear();
+        wake.nodes.emplace_back();
+        wake.lines.emplace_back();
 
-    void initializeWake(WakeData &wake,
-                        const PositionData &pos,
-                        const VelocityData &vel,
-                        const PerformanceData &perf,
-                        const BladeGeometry &geom,
-                        const TurbineParams &turbineParams,
-                        const SimParams &simParams)
-    {
-        const double pi = M_PI;
-        const double rho = turbineParams.rho;
+        std::vector<VortexNode> &nodes = wake.nodes[0];
+        std::vector<VortexLine> &lines = wake.lines[0];
 
-        for (int b = 0; b < turbineParams.nBlades; ++b)
+        nodes.reserve(wake.nBlades * 2 * wake.nTrail);
+        lines.reserve(wake.nBlades * (2 * wake.nShed + wake.nTrail));
+
+        std::vector<std::vector<int>> controlNodeIdx(wake.nBlades, std::vector<int>(wake.nTrail));
+        std::vector<std::vector<int>> trailNodeIdx(wake.nBlades, std::vector<int>(wake.nTrail));
+
+        // 添加节点（使用全局坐标）
+        for (int b = 0; b < wake.nBlades; ++b)
         {
-            for (int t = 0; t < simParams.timesteps; ++t)
+            for (int i = 0; i < wake.nTrail; ++i)
             {
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
-                    double cl = perf.clAt(b, t, i);
-                    Vec3 V_rel = vel.bladeAt(b, t, i);
-                    double V_mag = sqrt(V_rel.x * V_rel.x + V_rel.y * V_rel.y);
-                    double chord = geom.chordShedding[i];
-                    wake.gamma_shed[b][t][i] = 0.5 * cl * V_mag * chord / rho;
-
-                    wake.wake_pos_shed[b][t][i] = pos.boundAt(b, t, i);
-                }
-                for (int i = 0; i <= turbineParams.nSegments; ++i)
-                {
-                    if (i == 0)
-                    {
-                        wake.gamma_trail[b][t][i] = -wake.gamma_shed[b][t][i];
-                    }
-                    else if (i == turbineParams.nSegments)
-                    {
-                        wake.gamma_trail[b][t][i] = wake.gamma_shed[b][t][i - 1];
-                    }
-                    else
-                    {
-                        wake.gamma_trail[b][t][i] = wake.gamma_shed[b][t][i - 1] - wake.gamma_shed[b][t][i];
-                    }
-                    wake.wake_pos_trail[b][t][i] = pos.trailAt(b, t, i);
-                }
+                controlNodeIdx[b][i] = nodes.size();
+                nodes.push_back({pos.quarterAt(b, 0, i), Vec3(turbineParams.windSpeed, 0.0, 0.0)});
+                trailNodeIdx[b][i] = nodes.size();
+                nodes.push_back({pos.trailAt(b, 0, i), Vec3(turbineParams.windSpeed, 0.0, 0.0)});
             }
         }
-    }
 
-    void updateWake(WakeData &wake,
-                    const VelocityData &vel,
-                    const SimParams &simParams)
-    {
-        for (int b = 0; b < wake.gamma_shed.size(); ++b)
+        // Bound vortex: n_shed lines per blade,首尾连接
+        std::vector<std::vector<double>> gamma_shed(wake.nBlades, std::vector<double>(wake.nShed));
+        for (int b = 0; b < wake.nBlades; ++b)
         {
-            for (int t = 1; t < wake.gamma_shed[0].size(); ++t)
+            for (int i = 0; i < wake.nShed; ++i)
             {
-                for (int i = 0; i < wake.gamma_shed[0][0].size(); ++i)
-                {
-                    Vec3 v = vel.boundAt(b, t - 1, i);
-                    wake.wake_pos_shed[b][t][i] = wake.wake_pos_shed[b][t - 1][i] + v * simParams.dt;
-                }
-                for (int i = 0; i < wake.gamma_trail[0][0].size(); ++i)
-                {
-                    int shed_idx = (i < wake.gamma_shed[0][0].size()) ? i : wake.gamma_shed[0][0].size() - 1;
-                    Vec3 v = vel.boundAt(b, t - 1, shed_idx);
-                    wake.wake_pos_trail[b][t][i] = wake.wake_pos_trail[b][t - 1][i] + v * simParams.dt;
-                }
+                double cl = perf.clAt(b, 0, i);
+                double chord = geom.chordShedding[i];
+                double V_rel = turbineParams.windSpeed;
+                gamma_shed[b][i] = 0.5 * V_rel * chord * cl;
+
+                int startIdx = controlNodeIdx[b][i];
+                int endIdx = controlNodeIdx[b][i + 1]; // n_trail = n_shed + 1
+                lines.push_back({startIdx, endIdx, gamma_shed[b][i], true});
             }
         }
-    }
 
-    void computeInducedVelocity(VelocityData &vel,
-                                const WakeData &wake,
-                                const BladeGeometry &geom,
-                                const TurbineParams &turbineParams,
-                                const SimParams &simParams)
-    {
-        const double pi = M_PI;
-        const double epsilon = 1e-6;
-
-        for (int b = 0; b < turbineParams.nBlades; ++b)
+        // Trailing vortex: n_trail lines per blade
+        std::vector<std::vector<double>> gamma_trail(wake.nBlades, std::vector<double>(wake.nTrail));
+        for (int b = 0; b < wake.nBlades; ++b)
         {
-            for (int t = 0; t < simParams.timesteps; ++t)
+            // 边界填充 0
+            gamma_trail[b][0] = 0.0;
+            for (int i = 0; i < wake.nShed; ++i)
             {
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
-                    Vec3 induced_vel(0.0, 0.0, 0.0);
-                    Vec3 x = geom.colloc[i];
-
-                    // shedding 涡量
-                    for (int wb = 0; wb < wake.gamma_shed.size(); ++wb)
-                    {
-                        for (int wt = 0; wt < wake.gamma_shed[0].size() - 1; ++wt)
-                        {
-                            for (int wi = 0; wi < wake.gamma_shed[0][0].size(); ++wi)
-                            {
-                                Vec3 x1 = wake.wake_pos_shed[wb][wt][wi];
-                                Vec3 x2 = wake.wake_pos_shed[wb][wt + 1][wi];
-                                double gamma = wake.gamma_shed[wb][wt][wi];
-                                Vec3 dl = x2 - x1;
-                                Vec3 r = x - x1;
-                                double r_norm = r.norm();
-                                if (r_norm > epsilon)
-                                {
-                                    double coef = gamma / (4 * pi * r_norm * r_norm * r_norm);
-                                    induced_vel = induced_vel + (r.cross(dl) * coef); // 使用 operator+
-                                }
-                            }
-                        }
-                    }
-
-                    // trailing 涡量
-                    for (int wb = 0; wb < wake.gamma_trail.size(); ++wb)
-                    {
-                        for (int wt = 0; wt < wake.gamma_trail[0].size(); ++wt)
-                        {
-                            for (int wi = 0; wi < wake.gamma_trail[0][0].size() - 1; ++wi)
-                            {
-                                Vec3 x1 = wake.wake_pos_trail[wb][wt][wi];
-                                Vec3 x2 = wake.wake_pos_trail[wb][wt][wi + 1];
-                                double gamma = wake.gamma_trail[wb][wt][wi];
-                                Vec3 dl = x2 - x1;
-                                Vec3 r = x - x1;
-                                double r_norm = r.norm();
-                                if (r_norm > epsilon)
-                                {
-                                    double coef = gamma / (4 * pi * r_norm * r_norm * r_norm);
-                                    induced_vel = induced_vel + (r.cross(dl) * coef); // 使用 operator+
-                                }
-                            }
-                        }
-                    }
-
-                    Vec3 current_vel = vel.boundAt(b, t, i);
-                    vel.setBoundAt(b, t, i) = current_vel + induced_vel;
-                }
+                gamma_trail[b][i + 1] = gamma_shed[b][i];
+            }
+            for (int i = 1; i < wake.nTrail; ++i)
+            {
+                gamma_trail[b][i] = gamma_trail[b][i] - gamma_trail[b][i - 1];
+            }
+            for (int i = 0; i < wake.nTrail; ++i)
+            {
+                int startIdx = controlNodeIdx[b][i];
+                int endIdx = trailNodeIdx[b][i];
+                lines.push_back({startIdx, endIdx, gamma_trail[b][i], false});
             }
         }
+
+        // Shedding vortex: n_shed lines per blade
+        std::vector<std::vector<double>> gamma(wake.nBlades, std::vector<double>(wake.nShed));
+        for (int b = 0; b < wake.nBlades; ++b)
+        {
+            for (int i = 0; i < wake.nShed; ++i)
+            {
+                int startIdx = trailNodeIdx[b][i];
+                int endIdx = trailNodeIdx[b][i + 1];
+                lines.push_back({startIdx, endIdx, -1 * gamma_shed[b][i], true});
+            }
+        }
+
+        // 计算诱导速度，叠加到节点速度
+        std::vector<Vec3> inducedVel(nodes.size());
+        computeInducedVelocity(inducedVel, wake, turbineParams, 0);
+        for (size_t i = 0; i < nodes.size(); ++i)
+        {
+            nodes[i].velocity = nodes[i].velocity + inducedVel[i];
+        }
+
+        std::cout << "Wake initialized: nBlades=" << wake.nBlades
+                  << ", nShed=" << wake.nShed
+                  << ", nTrail=" << wake.nTrail
+                  << ", nodes[0]=" << nodes.size()
+                  << ", lines[0]=" << lines.size() << std::endl
+                  << "First node vel=" << to_string(nodes[0].velocity) << std::endl;
     }
 
+    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const Wake &wake,
+                                const TurbineParams &turbineParams, int currentTimestep, double cutOff)
+    {
+        const auto &nodes = wake.nodes[currentTimestep];
+        const auto &lines = wake.lines[currentTimestep];
+        inducedVel.resize(nodes.size(), Vec3(0.0, 0.0, 0.0));
+
+        double cutOffScaled = cutOff * turbineParams.rTip;
+        double denominatorThreshold = 1e-10; // 奇异点阈值
+
+        for (size_t n = 0; n < nodes.size(); ++n)
+        {
+            Vec3 p = nodes[n].position;
+            Vec3 vel(0.0, 0.0, 0.0);
+
+            for (size_t l = 0; l < lines.size(); ++l)
+            {
+                const VortexLine &line = lines[l];
+                Vec3 x1 = nodes[line.startNodeIdx].position;
+                Vec3 x2 = nodes[line.endNodeIdx].position;
+                double gamma = line.gamma;
+
+                Vec3 l_vec = x2 - x1; // 改为 l_vec，避免与循环变量 l 冲突
+                double l_squared = l_vec.x * l_vec.x + l_vec.y * l_vec.y + l_vec.z * l_vec.z;
+                double cut_l = cutOffScaled * cutOffScaled * l_squared;
+                double coeff = gamma / (4.0 * M_PI);
+
+                Vec3 r1 = p - x1;
+                Vec3 r2 = p - x2;
+                double r1_norm = r1.norm();
+                double r2_norm = r2.norm();
+                double r1_r2 = r1_norm * r2_norm;
+                double dot_r1_r2 = r1.dot(r2);
+                Vec3 cross_r1_r2 = r1.cross(r2);
+
+                double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + cut_l;
+
+                // 跳过奇异点
+                if (denominator < denominatorThreshold || r1_norm < 1e-6 || r2_norm < 1e-6)
+                {
+                    if (n == 0 && l < 5)
+                    {
+                        std::cout << "Line " << l << ": Skipped due to small denominator=" << denominator
+                                  << ", r1_norm=" << r1_norm << ", r2_norm=" << r2_norm << std::endl;
+                    }
+                    continue;
+                }
+
+                double contribution = coeff * (r1_norm + r2_norm) / denominator;
+                Vec3 vel_contrib = cross_r1_r2 * contribution;
+                vel = vel + cross_r1_r2 * contribution;
+            }
+
+            inducedVel[n] = vel;
+
+            std::cout << "Induced velocity at t=" << currentTimestep
+                      << ": vel[" << n << "]=" << to_string(inducedVel[n]) << std::endl;
+        }
+    }
 } // namespace fvw

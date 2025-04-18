@@ -1,46 +1,49 @@
 #ifndef FVW_WAKE_H
 #define FVW_WAKE_H
 
-#include "utils.h"
 #include "geometry.h"
-#include "position.h"
+#include "performance.h"
 #include "velocity.h"
-#include "bem.h"
+#include "utils.h"
 #include <vector>
 
-namespace fvw {
+namespace fvw
+{
 
-struct WakeData {
-    // 尾迹涡量：shedding（时间方向），trailing（空间方向）
-    std::vector<std::vector<std::vector<double>>> gamma_shed; // [nBlades][nTimesteps][nShed]
-    std::vector<std::vector<std::vector<double>>> gamma_trail; // [nBlades][nTimesteps][nShed+1]
-    // 尾迹涡点位置
-    std::vector<std::vector<std::vector<Vec3>>> wake_pos_shed; // [nBlades][nTimesteps][nShed]
-    std::vector<std::vector<std::vector<Vec3>>> wake_pos_trail; // [nBlades][nTimesteps][nShed+1]
-    
-    WakeData(int nBlades, int nTimesteps, int nShed);
-};
+    struct VortexNode
+    {
+        Vec3 position;
+        Vec3 velocity;
+    };
 
-// 初始化尾迹（计算初始环量和位置）
-void initializeWake(WakeData& wake,
-                    const PositionData& pos,
-                    const VelocityData& vel,
-                    const PerformanceData& perf,
-                    const BladeGeometry& geom,
-                    const TurbineParams& turbineParams,
-                    const SimParams& simParams);
+    struct VortexLine
+    {
+        int startNodeIdx;
+        int endNodeIdx;
+        double gamma;
+        bool isShedding; // true: shedding, false: trailing
+    };
 
-// 更新尾迹位置（对流）
-void updateWake(WakeData& wake,
-                const VelocityData& vel,
-                const SimParams& simParams);
+    struct Wake
+    {
+        std::vector<std::vector<VortexNode>> nodes; // [timestep][nodes]
+        std::vector<std::vector<VortexLine>> lines; // [timestep][lines]
+        int nBlades;
+        int nShed;
+        int nTrail;
 
-// 计算尾迹诱导速度（Biot-Savart）
-void computeInducedVelocity(VelocityData& vel,
-                           const WakeData& wake,
-                           const BladeGeometry& geom,
-                           const TurbineParams& turbineParams,
-                           const SimParams& simParams);
+        Wake(int nBlades_, int nShed_, int nTrail_)
+            : nBlades(nBlades_), nShed(nShed_), nTrail(nTrail_) {}
+    };
+
+    void initializeWake(Wake& wake, const BladeGeometry& geom, const PerformanceData& perf,
+        const TurbineParams& turbineParams, const PositionData& pos);
+
+    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const Wake &wake,
+                                const TurbineParams &turbineParams, int currentTimestep, double cutOff = 0.001);
+
+    // void updateWake(Wake& wake, const PerformanceData& perf, const BladeGeometry& geom,
+    //                 const TurbineParams& turbineParams, const SimParams& simParams, int currentTimestep);
 
 } // namespace fvw
 

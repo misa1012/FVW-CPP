@@ -2,6 +2,7 @@
 #include "geometry.h"
 #include "position.h"
 #include "velocity.h"
+#include "performance.h"
 #include "bem.h"
 #include "wake.h"
 #include <iostream>
@@ -33,6 +34,7 @@ int main(int argc, char *argv[])
     turbineParams.nSegments = 18;
     turbineParams.tsr = 7.0;
     turbineParams.omega = turbineParams.tsr * turbineParams.windSpeed / turbineParams.rTip;
+    
     // Compute blade geometry
     auto geom = fvw::computeBladeGeometry(turbineParams);
     std::cout << "Blade geometry computed." << std::endl;
@@ -71,37 +73,41 @@ int main(int argc, char *argv[])
 
     // Call velocity.h
     // Compute velocities
-    fvw::VelocityData vel(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    // Section 4. Compute velocities
+    fvw::VelICS velICS(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    fvw::computeVelICS(velICS, pos, simParams, turbineParams);
+
+    fvw::VelBCS velBCS(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
     fvw::NodeAxes axes(turbineParams.nBlades, simParams.timesteps,
                        turbineParams.nSegments + 1, turbineParams.nSegments);
-    fvw::computeVelocities(vel, axes, pos, simParams, turbineParams);
-    std::vector<std::vector<std::vector<double>>> aoag(
-        turbineParams.nBlades,
-        std::vector<std::vector<double>>(simParams.timesteps,
-                                         std::vector<double>(turbineParams.nSegments)));
-    fvw::computeAoAG(aoag, vel, turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
-    std::cout << "Velocity and AoA computation completed." << std::endl;
+    fvw::computeVelBCS(velBCS, velICS, axes, pos, simParams, turbineParams);
+    std::cout << "Velocity computation completed." << std::endl;
+
+    // Initialize performance data
+    fvw::PerformanceData perf(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    std::cout << "Performance data is initialized." << std::endl;
 
     // Compute BEM
-    fvw::PerformanceData perf(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
-    fvw::computeBEM(perf, aoag, geom, turbineParams, airfoils);
+    fvw::computeBEM(perf, velBCS, geom, turbineParams, airfoils);
     std::cout << "BEM computation completed." << std::endl;
 
-    // Initialize and compute wake
-    fvw::WakeData wake(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
-    fvw::initializeWake(wake, pos, vel, perf, geom, turbineParams, simParams);
+    // Initialize the wake for the first timestep
+    fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
+    initializeWake(wake, geom, perf, turbineParams, pos);
     std::cout << "Wake initialization completed." << std::endl;
 
-    // Update wake and compute induced velocity (示例循环)
-    for (int t = 1; t < simParams.timesteps; ++t)
-    {
-        fvw::updateWake(wake, vel, simParams);
-        fvw::computeInducedVelocity(vel, wake, geom, turbineParams, simParams);
-        // 重新计算迎角和 BEM
-        fvw::computeAoAG(aoag, vel, turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
-        fvw::computeBEM(perf, aoag, geom, turbineParams, airfoils);
-    }
-    std::cout << "Wake computation completed." << std::endl;
+    // // Update wake and compute induced velocity (示例循环)
+    // for (int t = 1; t < simParams.timesteps; ++t)
+    // {
+    //     fvw::updateWake(wake, vel, simParams);
+    //     fvw::computeInducedVelocity(vel, wake, geom, turbineParams, simParams);
+    // fvw::computeVelICS(velICS, pos, simParams, turbineParams);
+    // fvw::computeVelBCS(velBCS, velICS, axes, pos, simParams, turbineParams);
+    //     // 重新计算迎角和 BEM
+    //     fvw::computeAoAG(aoag, vel, turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    //     fvw::computeBEM(perf, aoag, geom, turbineParams, airfoils);
+    // }
+    // std::cout << "Wake computation completed." << std::endl;
 
     return 0;
 }

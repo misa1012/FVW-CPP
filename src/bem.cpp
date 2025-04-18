@@ -1,123 +1,178 @@
 #include "bem.h"
-#include <algorithm>
-#include <cmath>
+#include <iostream>
 
 namespace fvw
 {
-
-    PerformanceData::PerformanceData(int nBlades_, int timesteps_, int nShed_)
-        : nBlades(nBlades_), nTimesteps(timesteps_), nShed(nShed_)
+    void computeAoA(PerformanceData &perf, const VelBCS &velBCS,
+                    const BladeGeometry &geom, const TurbineParams &turbineParams,
+                    const std::vector<double> &a, const std::vector<double> &ap)
     {
-        aoa.resize(nBlades * nTimesteps * nShed);
-        cl.resize(nBlades * nTimesteps * nShed);
-        cd.resize(nBlades * nTimesteps * nShed);
-    }
-
-    const double &PerformanceData::aoaAt(int b, int t, int i) const
-    {
-        return aoa[b * nTimesteps * nShed + t * nShed + i];
-    }
-
-    const double &PerformanceData::clAt(int b, int t, int i) const
-    {
-        return cl[b * nTimesteps * nShed + t * nShed + i];
-    }
-
-    const double &PerformanceData::cdAt(int b, int t, int i) const
-    {
-        return cd[b * nTimesteps * nShed + t * nShed + i];
-    }
-
-    double &PerformanceData::setAoaAt(int b, int t, int i)
-    {
-        return aoa[b * nTimesteps * nShed + t * nShed + i];
-    }
-
-    double &PerformanceData::setClAt(int b, int t, int i)
-    {
-        return cl[b * nTimesteps * nShed + t * nShed + i];
-    }
-
-    double &PerformanceData::setCdAt(int b, int t, int i)
-    {
-        return cd[b * nTimesteps * nShed + t * nShed + i];
-    }
-
-    // 线性插值翼型数据
-    static double interpolateAirfoil(const std::vector<double> &x,
-                                     const std::vector<double> &y,
-                                     double xq)
-    {
-        if (x.empty() || y.empty())
-            return 0.0;
-        if (xq <= x.front())
-            return y.front();
-        if (xq >= x.back())
-            return y.back();
-
-        for (size_t i = 1; i < x.size(); ++i)
-        {
-            if (xq <= x[i])
-            {
-                double t = (xq - x[i - 1]) / (x[i] - x[i - 1]);
-                return y[i - 1] + t * (y[i] - y[i - 1]);
-            }
-        }
-        return y.back();
-    }
-
-    void computeBEM(PerformanceData &perf,
-                    const std::vector<std::vector<std::vector<double>>> &aoag,
-                    const BladeGeometry &geom,
-                    const TurbineParams &turbineParams,
-                    const std::vector<AirfoilData> &airfoils)
-    {
-        for (int b = 0; b < turbineParams.nBlades; ++b)
+        for (int b = 0; b < perf.getBlades(); ++b)
         {
             for (int t = 0; t < perf.getTimesteps(); ++t)
             {
-                for (int i = 0; i < turbineParams.nSegments; ++i)
+                for (int i = 0; i < perf.getShed(); ++i)
                 {
-                    // 获取几何迎角
-                    double aoa_deg = aoag[b][t][i];
+                    int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+                    double windSpeed = turbineParams.windSpeed;
+                    double omega = turbineParams.omega;
+                    double r = geom.rShedding[i];
+                    double twist = geom.twistShedding[i] * M_PI / 180.0; // 转换为弧度
 
-                    // 限制迎角范围（与翼型数据匹配）
-                    aoa_deg = std::max(-20.0, std::min(20.0, aoa_deg));
-
-                    // 获取 shedding 节点的翼型索引
-                    double rShed = geom.rShedding[i];
-                    int af_idx = 0;
-                    for (size_t j = 1; j < geom.rTrailing.size(); ++j)
+                    // 计算流入角
+                    double phi = std::atan2(windSpeed * (1.0 - a[idx]), omega * r * (1.0 + ap[idx]));
+                    // 计算迎角
+                    double aoa = (phi - twist) * 180.0 / M_PI;
+                    if (std::isnan(aoa) || std::abs(aoa) == 180.0)
                     {
-                        if (rShed <= geom.rTrailing[j])
+                        aoa = 0.0;
+                    }
+                    perf.setAoaAt(b, t, i) = aoa;
+                }
+            }
+        }
+    }
+
+    void computeBEM(PerformanceData &perf, const VelBCS &velBCS,
+                    const BladeGeometry &geom, const TurbineParams &turbineParams,
+                    const std::vector<AirfoilData> &airfoils)
+    {
+        const double tolBEM = 1e-4;
+        const int maxIterBEM = 200;
+        const double pi = M_PI;
+        const double weightFactor = 0.2;
+
+        // 初始化局部变量
+        std::vector<double> a(perf.getBlades() * perf.getTimesteps() * perf.getShed(), 0.0);
+        std::vector<double> ap(perf.getBlades() * perf.getTimesteps() * perf.getShed(), 0.0);
+        std::vector<double> a0(perf.getBlades() * perf.getTimesteps() * perf.getShed());
+        std::vector<double> ap0(perf.getBlades() * perf.getTimesteps() * perf.getShed());
+        std::vector<double> solidity(perf.getShed());
+        std::vector<double> rNodes(perf.getShed());
+
+        // 计算 solidity, rNodes
+        for (int i = 0; i < perf.getShed(); ++i)
+        {
+            solidity[i] = (turbineParams.nBlades * geom.chordShedding[i]) / (2 * pi * geom.rShedding[i]);
+            rNodes[i] = geom.rShedding[i];
+        }
+
+        // 初始化 a
+        for (int b = 0; b < perf.getBlades(); ++b)
+        {
+            for (int t = 0; t < perf.getTimesteps(); ++t)
+            {
+                for (int i = 0; i < perf.getShed(); ++i)
+                {
+                    int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+                    double lambda_r = turbineParams.omega * rNodes[i] / turbineParams.windSpeed;
+                    double twist = geom.twistShedding[i] * pi / 180.0;
+                    a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] -
+                                     std::sqrt(4.0 - 4.0 * pi * lambda_r * solidity[i] +
+                                               pi * lambda_r * lambda_r * solidity[i] *
+                                                   (8.0 * twist + pi * solidity[i])));
+                }
+            }
+        }
+
+        // BEM 迭代
+        for (int iter = 0; iter < maxIterBEM; ++iter)
+        {
+            bool converged = true;
+
+            // 保存旧值
+            for (int b = 0; b < perf.getBlades(); ++b)
+            {
+                for (int t = 0; t < perf.getTimesteps(); ++t)
+                {
+                    for (int i = 0; i < perf.getShed(); ++i)
+                    {
+                        int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+                        a0[idx] = a[idx];
+                        ap0[idx] = ap[idx];
+                    }
+                }
+            }
+
+            // 计算迎角
+            computeAoA(perf, velBCS, geom, turbineParams, a, ap);
+
+            // 计算 cl, cd
+            for (int b = 0; b < perf.getBlades(); ++b)
+            {
+                for (int t = 0; t < perf.getTimesteps(); ++t)
+                {
+                    for (int i = 0; i < perf.getShed(); ++i)
+                    {
+                        int airfoilIdx = geom.airfoilIndex[i];
+                        double aoa = perf.aoaAt(b, t, i);
+                        perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
+                        perf.setCdAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
+                    }
+                }
+            }
+
+            // 更新 a, ap
+            for (int b = 0; b < perf.getBlades(); ++b)
+            {
+                for (int t = 0; t < perf.getTimesteps(); ++t)
+                {
+                    for (int i = 0; i < perf.getShed(); ++i)
+                    {
+                        int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+                        double cl = perf.clAt(b, t, i);
+                        double cd = perf.cdAt(b, t, i);
+                        double phi = (perf.aoaAt(b, t, i) * pi / 180.0) + (geom.twistShedding[i] * pi / 180.0);
+
+                        // 损失因子
+                        double ftip = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (turbineParams.rTip - rNodes[i]) / (2.0 * rNodes[i] * std::sin(phi))));
+                        double fhub = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (rNodes[i] - turbineParams.rHub) / (2.0 * turbineParams.rHub * std::sin(phi))));
+                        double f = ftip * fhub;
+
+                        // 推力系数
+                        double ct = solidity[i] * (1.0 - a[idx]) * (1.0 - a[idx]) *
+                                    (cl * std::cos(phi) + cd * std::sin(phi)) /
+                                    (std::sin(phi) * std::sin(phi));
+
+                        // 更新 a
+                        double denom = solidity[i] * (cl * std::cos(phi) + cd * std::sin(phi));
+                        double a_new = denom > 1e-10 ? 1.0 / (1.0 + 4.0 * f * std::sin(phi) * std::sin(phi) / denom) : a[idx];
+                        if (ct > 0.96 * f)
                         {
-                            af_idx = geom.airfoilIndex[j - 1];
-                            break;
+                            a_new = (18.0 * f - 20.0 - 3.0 * std::sqrt(ct * (50.0 - 36.0 * f) + 12.0 * f * (3.0 * f - 4.0))) /
+                                    (36.0 * f - 50.0);
+                        }
+
+                        // 更新 ap
+                        double ap_new = denom > 1e-10 ? 1.0 / (4.0 * f * std::cos(phi) * std::sin(phi) /
+                                                                   (solidity[i] * (cl * std::sin(phi) - cd * std::cos(phi))) -
+                                                               1.0)
+                                                      : ap[idx];
+
+                        // 残差
+                        double da = std::abs(a_new - a0[idx]);
+                        double dap = std::abs(ap_new - ap0[idx]);
+
+                        // 加权更新
+                        a[idx] = (1.0 - weightFactor) * a[idx] + weightFactor * a_new;
+                        ap[idx] = (1.0 - weightFactor) * ap[idx] + weightFactor * ap_new;
+
+                        if (da > tolBEM || dap > tolBEM)
+                        {
+                            converged = false;
                         }
                     }
-                    if (rShed > geom.rTrailing.back())
-                    {
-                        af_idx = geom.airfoilIndex.back();
-                    }
-
-                    if (af_idx < 0 || af_idx >= static_cast<int>(airfoils.size()))
-                    {
-                        af_idx = 0; // 回退到 Cylinder1
-                    }
-
-                    // 插值升力和阻力系数
-                    double cl = interpolateAirfoil(airfoils[af_idx].aoa,
-                                                   airfoils[af_idx].cl,
-                                                   aoa_deg);
-                    double cd = interpolateAirfoil(airfoils[af_idx].aoa,
-                                                   airfoils[af_idx].cd,
-                                                   aoa_deg);
-
-                    // 存储结果
-                    perf.setAoaAt(b, t, i) = aoa_deg;
-                    perf.setClAt(b, t, i) = cl;
-                    perf.setCdAt(b, t, i) = cd;
                 }
+            }
+
+            if (converged)
+            {
+                std::cout << "BEM converged after " << iter + 1 << " iterations" << std::endl;
+                break;
+            }
+            if (iter == maxIterBEM - 1)
+            {
+                std::cerr << "Warning: BEM failed to converge after " << maxIterBEM << " iterations" << std::endl;
             }
         }
     }

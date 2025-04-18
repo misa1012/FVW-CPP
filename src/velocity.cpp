@@ -4,31 +4,36 @@
 namespace fvw
 {
 
-    VelocityData::VelocityData(int nBlades_, int timesteps_, int nShed_)
+    VelICS::VelICS(int nBlades_, int timesteps_, int nShed_)
         : nBlades(nBlades_), nTimesteps(timesteps_), nShed(nShed_)
     {
-        bound.resize(nBlades * nTimesteps * nShed);
-        blade.resize(nBlades * nTimesteps * nShed);
+        data.resize(nBlades * nTimesteps * nShed);
     }
 
-    const Vec3 &VelocityData::boundAt(int b, int t, int i) const
+    const Vec3 &VelICS::at(int b, int t, int i) const
     {
-        return bound[b * nTimesteps * nShed + t * nShed + i];
+        return data[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    const Vec3 &VelocityData::bladeAt(int b, int t, int i) const
+    Vec3 &VelICS::setAt(int b, int t, int i)
     {
-        return blade[b * nTimesteps * nShed + t * nShed + i];
+        return data[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    Vec3 &VelocityData::setBoundAt(int b, int t, int i)
+    VelBCS::VelBCS(int nBlades_, int timesteps_, int nShed_)
+        : nBlades(nBlades_), nTimesteps(timesteps_), nShed(nShed_)
     {
-        return bound[b * nTimesteps * nShed + t * nShed + i];
+        data.resize(nBlades * nTimesteps * nShed);
     }
 
-    Vec3 &VelocityData::setBladeAt(int b, int t, int i)
+    const Vec3 &VelBCS::at(int b, int t, int i) const
     {
-        return blade[b * nTimesteps * nShed + t * nShed + i];
+        return data[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &VelBCS::setAt(int b, int t, int i)
+    {
+        return data[b * nTimesteps * nShed + t * nShed + i];
     }
 
     NodeAxes::NodeAxes(int nBlades_, int timesteps_, int nTrail_, int nShed_)
@@ -49,7 +54,6 @@ namespace fvw
     Vec3 &NodeAxes::bytAt(int b, int t, int i) { return byt[b * nTimesteps * nTrail + t * nTrail + i]; }
     Vec3 &NodeAxes::bztAt(int b, int t, int i) { return bzt[b * nTimesteps * nTrail + t * nTrail + i]; }
 
-    // 中心差分
     static Vec3 ctdiff(const std::vector<Vec3> &pos, const std::vector<double> &times, int t, int nTimesteps)
     {
         if (t == 0)
@@ -66,17 +70,17 @@ namespace fvw
         }
     }
 
-    void computeVelocities(VelocityData &vel, NodeAxes &axes, const PositionData &pos,
-                           const SimParams &simParams, const TurbineParams &turbineParams)
+    void computeVelICS(VelICS &velICS, const PositionData &pos,
+                       const SimParams &simParams, const TurbineParams &turbineParams)
     {
-        // Time array
+        // Compute time array
         std::vector<double> times(simParams.timesteps);
         for (int t = 0; t < simParams.timesteps; ++t)
         {
             times[t] = t * simParams.dt;
         }
 
-        // Compute vel_bound
+        // Compute ICS velocities using center difference and wind speed
         for (int b = 0; b < turbineParams.nBlades; ++b)
         {
             for (int i = 0; i < turbineParams.nSegments; ++i)
@@ -88,13 +92,17 @@ namespace fvw
                 }
                 for (int t = 0; t < simParams.timesteps; ++t)
                 {
-                    vel.setBoundAt(b, t, i) = ctdiff(bound_t, times, t, simParams.timesteps) * -1.0 +
-                                              Vec3(turbineParams.windSpeed, 0.0, 0.0);
+                    velICS.setAt(b, t, i) = ctdiff(bound_t, times, t, simParams.timesteps) * -1.0 +
+                                            Vec3(turbineParams.windSpeed, 0.0, 0.0);
                 }
             }
         }
+    }
 
-        // Compute node axes
+    void computeVelBCS(VelBCS &velBCS, const VelICS &velICS, NodeAxes &axes, const PositionData &pos,
+                       const SimParams &simParams, const TurbineParams &turbineParams)
+    {
+        // Compute node axes for trailing and shedding nodes
         for (int b = 0; b < turbineParams.nBlades; ++b)
         {
             for (int t = 0; t < simParams.timesteps; ++t)
@@ -149,36 +157,17 @@ namespace fvw
             }
         }
 
-        // Compute vel_blade
+        // Compute BCS velocities by projecting ICS velocities onto node axes
         for (int b = 0; b < turbineParams.nBlades; ++b)
         {
             for (int t = 0; t < simParams.timesteps; ++t)
             {
                 for (int i = 0; i < turbineParams.nSegments; ++i)
                 {
-                    Vec3 &blade = vel.setBladeAt(b, t, i);
-                    blade.x = axes.bxnAt(b, t, i).dot(vel.boundAt(b, t, i));
-                    blade.y = axes.bynAt(b, t, i).dot(vel.boundAt(b, t, i));
-                    blade.z = axes.bznAt(b, t, i).dot(vel.boundAt(b, t, i));
-                }
-            }
-        }
-    }
-
-    void computeAoAG(std::vector<std::vector<std::vector<double>>> &aoag, const VelocityData &vel,
-                     int nBlades, int timesteps, int nShed)
-    {
-        for (int b = 0; b < nBlades; ++b)
-        {
-            for (int t = 0; t < timesteps; ++t)
-            {
-                for (int i = 0; i < nShed; ++i)
-                {
-                    aoag[b][t][i] = std::atan2(-vel.bladeAt(b, t, i).y, vel.bladeAt(b, t, i).x) * 180.0 / M_PI;
-                    if (std::isnan(aoag[b][t][i]) || std::abs(aoag[b][t][i]) == 180.0)
-                    {
-                        aoag[b][t][i] = 0.0;
-                    }
+                    Vec3 &bcs = velBCS.setAt(b, t, i);
+                    bcs.x = axes.bxnAt(b, t, i).dot(velICS.at(b, t, i));
+                    bcs.y = axes.bynAt(b, t, i).dot(velICS.at(b, t, i));
+                    bcs.z = axes.bznAt(b, t, i).dot(velICS.at(b, t, i));
                 }
             }
         }

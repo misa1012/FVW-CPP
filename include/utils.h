@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <cmath>
+#include <string>
 
 namespace fvw
 {
@@ -21,6 +22,11 @@ namespace fvw
             return {y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x};
         }
     };
+
+    double interpolate(const std::vector<double> &x, const std::vector<double> &y, double x0);
+
+    // Output
+    std::string to_string(const Vec3& v);
 
 } // namespace fvw
 

@@ -10,12 +10,13 @@ include_directories(${CMAKE_SOURCE_DIR}/validation/include)
 
 # Source files
 set(SRC_SOURCES
-    src/main.cpp
+    main.cpp
+    src/utils.cpp
     src/airfoil.cpp
     src/geometry.cpp
     src/position.cpp
-    src/utils.cpp
     src/velocity.cpp
+    src/performance.cpp
     src/bem.cpp
     src/wake.cpp
 )
