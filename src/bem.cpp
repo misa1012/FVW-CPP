@@ -57,23 +57,23 @@ namespace fvw
             rNodes[i] = geom.rShedding[i];
         }
 
-        // 初始化 a
-        for (int b = 0; b < perf.getBlades(); ++b)
-        {
-            for (int t = 0; t < perf.getTimesteps(); ++t)
-            {
-                for (int i = 0; i < perf.getShed(); ++i)
-                {
-                    int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
-                    double lambda_r = turbineParams.omega * rNodes[i] / turbineParams.windSpeed;
-                    double twist = geom.twistShedding[i] * pi / 180.0;
-                    a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] -
-                                     std::sqrt(4.0 - 4.0 * pi * lambda_r * solidity[i] +
-                                               pi * lambda_r * lambda_r * solidity[i] *
-                                                   (8.0 * twist + pi * solidity[i])));
-                }
-            }
-        }
+        // 初始化 a - 用近似值，可以更快收敛
+        // for (int b = 0; b < perf.getBlades(); ++b)
+        // {
+        //     for (int t = 0; t < perf.getTimesteps(); ++t)
+        //     {
+        //         for (int i = 0; i < perf.getShed(); ++i)
+        //         {
+        //             int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+        //             double lambda_r = turbineParams.omega * rNodes[i] / turbineParams.windSpeed;
+        //             double twist = geom.twistShedding[i] * pi / 180.0;
+        //             a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] -
+        //                              std::sqrt(4.0 - 4.0 * pi * lambda_r * solidity[i] +
+        //                                        pi * lambda_r * lambda_r * solidity[i] *
+        //                                            (8.0 * twist + pi * solidity[i])));
+        //         }
+        //     }
+        // }
 
         // BEM 迭代
         for (int iter = 0; iter < maxIterBEM; ++iter)
