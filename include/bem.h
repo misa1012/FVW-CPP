@@ -8,11 +8,6 @@
 
 namespace fvw
 {
-
-    void computeAoA(PerformanceData &perf,
-                    const BladeGeometry &geom, const TurbineParams &turbineParams,
-                    const std::vector<double> &a, const std::vector<double> &ap);
-
     void computeBEM(PerformanceData &perf,
                     const BladeGeometry &geom, const TurbineParams &turbineParams,
                     const std::vector<AirfoilData> &airfoils);

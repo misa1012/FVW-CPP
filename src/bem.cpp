@@ -3,40 +3,13 @@
 
 namespace fvw
 {
-    void computeAoA(PerformanceData &perf,
-                    const BladeGeometry &geom, const TurbineParams &turbineParams,
-                    const std::vector<double> &a, const std::vector<double> &ap)
-    {
-        for (int b = 0; b < perf.getBlades(); ++b)
-        {
-            for (int t = 0; t < perf.getTimesteps(); ++t)
-            {
-                for (int i = 0; i < perf.getShed(); ++i)
-                {
-                    int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
-                    double windSpeed = turbineParams.windSpeed;
-                    double omega = turbineParams.omega;
-                    double r = geom.rShedding[i];
-                    double twist = geom.twistShedding[i] * M_PI / 180.0; // 转换为弧度
-
-                    // 计算流入角
-                    double phi = std::atan2(windSpeed * (1.0 - a[idx]), omega * r * (1.0 + ap[idx]));
-                    // 计算迎角
-                    double aoa = (phi - twist) * 180.0 / M_PI;
-                    if (std::isnan(aoa) || std::abs(aoa) == 180.0)
-                    {
-                        aoa = 0.0;
-                    }
-                    perf.setAoaAt(b, t, i) = aoa;
-                }
-            }
-        }
-    }
-
     void computeBEM(PerformanceData &perf,
                     const BladeGeometry &geom, const TurbineParams &turbineParams,
                     const std::vector<AirfoilData> &airfoils)
     {
+        // 定义一些开关
+        bool if_InitialGuess = false;
+
         const double tolBEM = 1e-4;
         const int maxIterBEM = 200;
         const double pi = M_PI;
@@ -57,24 +30,6 @@ namespace fvw
             rNodes[i] = geom.rShedding[i];
         }
 
-        // 初始化 a - 用近似值，可以更快收敛
-        // for (int b = 0; b < perf.getBlades(); ++b)
-        // {
-        //     for (int t = 0; t < perf.getTimesteps(); ++t)
-        //     {
-        //         for (int i = 0; i < perf.getShed(); ++i)
-        //         {
-        //             int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
-        //             double lambda_r = turbineParams.omega * rNodes[i] / turbineParams.windSpeed;
-        //             double twist = geom.twistShedding[i] * pi / 180.0;
-        //             a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] -
-        //                              std::sqrt(4.0 - 4.0 * pi * lambda_r * solidity[i] +
-        //                                        pi * lambda_r * lambda_r * solidity[i] *
-        //                                            (8.0 * twist + pi * solidity[i])));
-        //         }
-        //     }
-        // }
-
         // BEM 迭代
         for (int iter = 0; iter < maxIterBEM; ++iter)
         {
@@ -88,41 +43,41 @@ namespace fvw
                     for (int i = 0; i < perf.getShed(); ++i)
                     {
                         int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+
+                        if (if_InitialGuess)
+                        {
+                            double lambda_r = turbineParams.omega * rNodes[i] / turbineParams.windSpeed;
+                            double twist = geom.twistShedding[i] * pi / 180.0;
+                            a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] -
+                                             std::sqrt(4.0 - 4.0 * pi * lambda_r * solidity[i] +
+                                                       pi * lambda_r * lambda_r * solidity[i] *
+                                                           (8.0 * twist + pi * solidity[i])));
+                        }
+
                         a0[idx] = a[idx];
                         ap0[idx] = ap[idx];
-                    }
-                }
-            }
 
-            // 计算迎角
-            computeAoA(perf, geom, turbineParams, a, ap);
+                        double windSpeed = turbineParams.windSpeed;
+                        double omega = turbineParams.omega;
+                        double r = geom.rShedding[i];
+                        double twist = geom.twistShedding[i] * M_PI / 180.0; // 转换为弧度
 
-            // 计算 cl, cd
-            for (int b = 0; b < perf.getBlades(); ++b)
-            {
-                for (int t = 0; t < perf.getTimesteps(); ++t)
-                {
-                    for (int i = 0; i < perf.getShed(); ++i)
-                    {
+                        // 计算流入角
+                        double phi = std::atan2(windSpeed * (1.0 - a[idx]), omega * r * (1.0 + ap[idx]));
+                        // 计算迎角
+                        double aoa = (phi - twist) * 180.0 / M_PI;
+                        if (std::isnan(aoa) || std::abs(aoa) == 180.0)
+                        {
+                            aoa = 0.0;
+                        }
+                        perf.setAoaAt(b, t, i) = aoa;
+
                         int airfoilIdx = geom.airfoilIndex[i];
-                        double aoa = perf.aoaAt(b, t, i);
                         perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
                         perf.setCdAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
-                    }
-                }
-            }
 
-            // 更新 a, ap
-            for (int b = 0; b < perf.getBlades(); ++b)
-            {
-                for (int t = 0; t < perf.getTimesteps(); ++t)
-                {
-                    for (int i = 0; i < perf.getShed(); ++i)
-                    {
-                        int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
                         double cl = perf.clAt(b, t, i);
                         double cd = perf.cdAt(b, t, i);
-                        double phi = (perf.aoaAt(b, t, i) * pi / 180.0) + (geom.twistShedding[i] * pi / 180.0);
 
                         // 损失因子
                         double ftip = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (turbineParams.rTip - rNodes[i]) / (2.0 * rNodes[i] * std::sin(phi))));
