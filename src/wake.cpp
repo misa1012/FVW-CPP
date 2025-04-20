@@ -96,12 +96,12 @@ namespace fvw
             nodes[i].velocity = nodes[i].velocity + inducedVel[i];
         }
 
-        std::cout << "Wake initialized: nBlades=" << wake.nBlades
-                  << ", nShed=" << wake.nShed
-                  << ", nTrail=" << wake.nTrail
-                  << ", nodes[0]=" << nodes.size()
-                  << ", lines[0]=" << lines.size() << std::endl
-                  << "First node vel=" << to_string(nodes[0].velocity) << std::endl;
+        // std::cout << "Wake initialized: nBlades=" << wake.nBlades
+        //           << ", nShed=" << wake.nShed
+        //           << ", nTrail=" << wake.nTrail
+        //           << ", nodes[0]=" << nodes.size()
+        //           << ", lines[0]=" << lines.size() << std::endl
+        //           << "First node vel=" << to_string(nodes[0].velocity) << std::endl;
     }
 
     void computeInducedVelocity(std::vector<Vec3> &inducedVel, const Wake &wake,
@@ -144,11 +144,11 @@ namespace fvw
                 // 跳过奇异点
                 if (denominator < denominatorThreshold || r1_norm < 1e-6 || r2_norm < 1e-6)
                 {
-                    if (n == 0 && l < 5)
-                    {
-                        std::cout << "Line " << l << ": Skipped due to small denominator=" << denominator
-                                  << ", r1_norm=" << r1_norm << ", r2_norm=" << r2_norm << std::endl;
-                    }
+                    // if (n == 0 && l < 5)
+                    // {
+                    //     std::cout << "Line " << l << ": Skipped due to small denominator=" << denominator
+                    //               << ", r1_norm=" << r1_norm << ", r2_norm=" << r2_norm << std::endl;
+                    // }
                     continue;
                 }
 
@@ -159,8 +159,8 @@ namespace fvw
 
             inducedVel[n] = vel;
 
-            std::cout << "Induced velocity at t=" << currentTimestep
-                      << ": vel[" << n << "]=" << to_string(inducedVel[n]) << std::endl;
+            // std::cout << "Induced velocity at t=" << currentTimestep
+            //           << ": vel[" << n << "]=" << to_string(inducedVel[n]) << std::endl;
         }
     }
 } // namespace fvw
