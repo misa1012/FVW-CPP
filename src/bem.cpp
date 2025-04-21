@@ -1,6 +1,7 @@
 #include "bem.h"
 #include <iostream>
 #include <iomanip>
+#include <set>
 
 namespace fvw
 {
@@ -10,7 +11,7 @@ namespace fvw
     {
         // 定义一些开关
         bool if_InitialGuess = true;
-        bool if_verbose = true;
+        bool if_verbose = false;
 
         // BEM相关的参数
         const double tolBEM = 1e-4;
@@ -35,6 +36,36 @@ namespace fvw
             solidity[i] = (turbineParams.nBlades * geom.chordShedding[i]) / (2 * pi * geom.rShedding[i]);
         }
 
+        if (if_verbose)
+        {
+            std::cout << std::fixed << std::setprecision(6);
+            std::cout << "[Blade geometry] twist values:" << std::endl;
+            for (int i = 0; i < perf.getShed(); ++i)
+            {
+                std::cout << "i=" << std::setw(2) << i << ", twist=" << std::setw(10) << geom.twistShedding[i] << std::endl;
+            }
+
+            std::set<int> printedAirfoils;
+            for (int i = 0; i < perf.getShed(); ++i)
+            {
+                int airfoilIdx = geom.airfoilIndex[i];
+                if (printedAirfoils.find(airfoilIdx) == printedAirfoils.end())
+                {
+                    std::cout << "[Airfoil data] airfoilIdx=" << airfoilIdx << ", segment i=" << i << ":" << std::endl;
+                    if (airfoilIdx >= 0 && airfoilIdx < airfoils.size())
+                    {
+                        for (size_t j = 0; j < airfoils[airfoilIdx].aoa.size(); ++j)
+                        {
+                            std::cout << "  aoa=" << std::setw(10) << airfoils[airfoilIdx].aoa[j]
+                                      << ", cl=" << std::setw(10) << airfoils[airfoilIdx].cl[j]
+                                      << ", cd=" << std::setw(10) << airfoils[airfoilIdx].cd[j] << std::endl;
+                        }
+                    }
+                    printedAirfoils.insert(airfoilIdx);
+                }
+            }
+        }
+
         if (if_InitialGuess)
         {
             for (int b = 0; b < perf.getBlades(); ++b)
@@ -45,11 +76,24 @@ namespace fvw
                     {
                         int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
                         double lambda_r = turbineParams.omega * geom.rShedding[i] / turbineParams.windSpeed;
-                        double twist = geom.twistShedding[i] * pi / 180.0;
-                        a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] -
-                                         std::sqrt(4.0 - 4.0 * pi * lambda_r * solidity[i] +
-                                                   pi * lambda_r * lambda_r * solidity[i] *
-                                                       (8.0 * twist + pi * solidity[i])));
+                        double twist = -geom.twistShedding[i] * pi / 180.0;
+                        double expr = 4.0 - 4.0 * pi * lambda_r * solidity[i] +
+                                      pi * lambda_r * lambda_r * solidity[i] * (8.0 * twist + pi * solidity[i]);
+                        if (expr < 0.0 || std::isnan(expr))
+                        {
+                            a[idx] = 0.33;
+                            std::cerr << "[Warning] Invalid sqrt_expr at i=" << i << ", expr=" << expr << ", set a=0.33" << std::endl;
+                        }
+                        else
+                        {
+                            a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] - std::sqrt(expr));
+                        }
+                        ap[idx] = 0.0;
+                        if (std::isnan(a[idx]) || std::isinf(a[idx]))
+                        {
+                            a[idx] = 0.33;
+                            std::cerr << "[Warning] Initial a NaN/Inf at i=" << i << ", set a=0.33" << std::endl;
+                        }
                     }
                 }
             }
@@ -68,26 +112,57 @@ namespace fvw
                     {
                         int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
 
-                         // 保存旧值
+                        // 保存旧值
                         a0[idx] = a[idx];
                         ap0[idx] = ap[idx];
 
                         double r = geom.rShedding[i];
-                        double twist = geom.twistShedding[i] * M_PI / 180.0; // 转换为弧度
+                        double twist = -1 * geom.twistShedding[i] * M_PI / 180.0; // 转换为弧度
 
-                        // 计算流入角
+                        if (std::isnan(a[idx]) || std::isnan(ap[idx]) || std::isinf(a[idx]) || std::isinf(ap[idx]))
+                        {
+                            a[idx] = 0.33;
+                            ap[idx] = 0.0;
+                            std::cerr << "[Warning] Reset a, ap at i=" << i << " due to NaN/Inf" << std::endl;
+                        }
+
                         double phi = std::atan2(windSpeed * (1.0 - a[idx]), omega * r * (1.0 + ap[idx]));
                         // 计算迎角
                         double aoa = (phi - twist) * 180.0 / M_PI;
+                        // if (std::isnan(aoa) || std::abs(aoa) == 180.0)
+                        // {
+                        //     aoa = 0.0;
+                        // }
+
                         if (std::isnan(aoa) || std::abs(aoa) == 180.0)
                         {
                             aoa = 0.0;
+                            std::cerr << "[Warning] AOA reset to 0 at i=" << i << ", phi=" << (phi * 180.0 / M_PI)
+                                      << ", a=" << a[idx] << ", ap=" << ap[idx] << std::endl;
                         }
                         perf.setAoaAt(b, t, i) = aoa;
+
+                        if (if_verbose && t == 0 && b == 0)
+                        {
+                            std::cout << "[BEM debug] i=" << std::setw(2) << i
+                                      << ", phi=" << std::setw(10) << (phi * 180.0 / M_PI)
+                                      << ", a=" << std::setw(10) << a[idx]
+                                      << ", ap=" << std::setw(10) << ap[idx]
+                                      << ", twist=" << std::setw(10) << (-geom.twistShedding[i]) << std::endl;
+                        }
 
                         int airfoilIdx = geom.airfoilIndex[i];
                         perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
                         perf.setCdAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
+
+                        if (if_verbose && b == 0 && t == 0 && i == 5)
+                        {
+                            double test_aoa = 10.917758;
+                            double cl_test = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, test_aoa);
+                            double cd_test = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, test_aoa);
+                            std::cout << "[Interp test] i=5, airfoilIdx=" << airfoilIdx
+                                      << ", aoa=" << test_aoa << ", cl=" << cl_test << ", cd=" << cd_test << std::endl;
+                        }
 
                         double cl = perf.clAt(b, t, i);
                         double cd = perf.cdAt(b, t, i);
@@ -96,6 +171,11 @@ namespace fvw
                         double ftip = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (turbineParams.rTip - geom.rShedding[i]) / (2.0 * geom.rShedding[i] * std::sin(phi))));
                         double fhub = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (geom.rShedding[i] - turbineParams.rHub) / (2.0 * turbineParams.rHub * std::sin(phi))));
                         double f = ftip * fhub;
+                        if (std::isnan(f) || f <= 0.0)
+                        {
+                            f = 1.0;
+                            std::cerr << "[Warning] Reset f at i=" << i << " due to NaN/negative" << std::endl;
+                        }
 
                         // 推力系数
                         double ct = solidity[i] * (1.0 - a[idx]) * (1.0 - a[idx]) *
@@ -152,8 +232,17 @@ namespace fvw
                                   << ", solidity=" << std::setw(10) << solidity[i] << std::endl;
                     }
 
-                    std::cout << "BEM completed: cl_[0][0][0]=" << perf.clAt(0, 0, 0)
-                              << ", a[0]=" << a[0] << ", ap[0]=" << ap[0] << std::endl;
+                    // 输出 t=0, b=0 的 aoa, cl, cd
+                    std::cout << "[BEM calculation] aerodynamic values (b=0, t=0):" << std::endl;
+                    for (int i = 0; i < perf.getShed(); ++i)
+                    {
+                        std::cout << "i=" << std::setw(2) << i
+                                  << ", r=" << std::setw(10) << geom.rShedding[i]
+                                  << ", aoa=" << std::setw(10) << perf.aoaAt(0, 0, i)
+                                  << ", cl=" << std::setw(10) << perf.clAt(0, 0, i)
+                                  << ", cd=" << std::setw(10) << perf.cdAt(0, 0, i)
+                                  << ", airfoilIdx=" << std::setw(3) << geom.airfoilIndex[i] << std::endl;
+                    }
                 }
 
                 break;
