@@ -9,7 +9,6 @@
 1. 模拟相关的参数simParams：包括dt和totalTime
 2. Turbine相关的参数turbineParams
 
-
 ### 第二部分、初始化
 初始化包括
 1. 对叶片几何进行初始化：
@@ -27,9 +26,6 @@
 4. 初始化performance
 初始化aoa, cl, cd的空的列表
 
--- 以上已进行验证 --
-验证结论是：interpolate得到的数值和python中的不太一样，其它验证是一致的
-
 ### 第三部分、BEM - 用于找到初始的aoa和cl、cd
 BEM的原理在于它要同时满足动量理论和叶素理论：
 动量理论：诱导因子决定了速度场
@@ -43,10 +39,15 @@ BEM的原理在于它要同时满足动量理论和叶素理论：
 5. 根据cl, cd计算出推力系数，进行计算出induction factor（动量理论）
 6. 根据该新计算的induction factor计算之前的（需要用weight factor更新）
 
-BEM的作用：通过BEM计算出的CL，计算出初始环量
-所以BEM更新的变量是perf
+BEM更新的变量是perf
+BEM的作用：通过BEM计算出的CL （这个在下一个部分实现：计算出初始环量
+
+-- 以上已进行验证 --
+验证结论是：interpolate得到的数值和python中的不太一样，其它验证是一致的
 
 
 ### 第四部分、更新wake （还在开发中）
+4.1 首先是初始化 initializeWake
+
 
 ## 变量解释
