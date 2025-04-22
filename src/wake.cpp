@@ -79,10 +79,11 @@ namespace fvw
             }
             gamma_trail[b][wake.nShed] = -gamma_bound[b][wake.nShed - 1];
 
+            // 这里要注意，debug过，要先trail再control，这会影响trailing induced velocity的正负号
             for (int i = 0; i < wake.nTrail; ++i)
             {
-                int startIdx = controlNodeIdx[b][i];
-                int endIdx = trailNodeIdx[b][i];
+                int startIdx = trailNodeIdx[b][i];
+                int endIdx = controlNodeIdx[b][i];
                 lines.push_back({startIdx, endIdx, gamma_trail[b][i], false});
             }
         }
@@ -161,31 +162,31 @@ namespace fvw
             nodes[i].velocity = nodes[i].velocity + inducedVel[i];
         }
 
-        if (if_verbose)
-        {
-            int blade = 0;
-            int timestep = 0;
-            // 输出指定叶片和时间步的诱导速度 x 坐标
-            std::cout << std::fixed << std::setprecision(6);
-            std::cout << "[Induced Velocity] Blade " << blade << ", t=" << timestep 
-                      << ", inducedVel.x:" << std::endl;
-            for (int i = 0; i < wake.nTrail; ++i)
-            {
-                int controlIdx = controlNodeIdx[blade][i];
-                int trailIdx = trailNodeIdx[blade][i];
-                std::cout << "i=" << std::setw(2) << i
-                          << ", controlNodeIdx=" << std::setw(3) << controlIdx
-                          << ", inducedVel.x=" << std::setw(10) << inducedVel[controlIdx].x << std::endl;
-                std::cout << "i=" << std::setw(2) << i
-                          << ", trailNodeIdx=" << std::setw(3) << trailIdx
-                          << ", inducedVel.x=" << std::setw(10) << inducedVel[trailIdx].x << std::endl;
-            }
-        
-            // 输出指定叶片的第一个节点的 velocity
-            int firstNodeIdx = controlNodeIdx[blade][0];
-            std::cout << "First node vel (Blade " << blade << ", t=" << timestep 
-                      << ")=" << to_string(nodes[firstNodeIdx].velocity) << std::endl;
-        }
+        // if (if_verbose)
+        // {
+        //     int blade = 0;
+        //     int timestep = 0;
+        //     // 输出指定叶片和时间步的诱导速度 x 坐标
+        //     std::cout << std::fixed << std::setprecision(6);
+        //     std::cout << "[Induced Velocity] Blade " << blade << ", t=" << timestep
+        //               << ", inducedVel.x:" << std::endl;
+        //     for (int i = 0; i < wake.nTrail; ++i)
+        //     {
+        //         int controlIdx = controlNodeIdx[blade][i];
+        //         int trailIdx = trailNodeIdx[blade][i];
+        //         std::cout << "i=" << std::setw(2) << i
+        //                   << ", controlNodeIdx=" << std::setw(3) << controlIdx
+        //                   << ", inducedVel.x=" << std::setw(10) << inducedVel[controlIdx].x << std::endl;
+        //         std::cout << "i=" << std::setw(2) << i
+        //                   << ", trailNodeIdx=" << std::setw(3) << trailIdx
+        //                   << ", inducedVel.x=" << std::setw(10) << inducedVel[trailIdx].x << std::endl;
+        //     }
+
+        //     // 输出指定叶片的第一个节点的 velocity
+        //     int firstNodeIdx = controlNodeIdx[blade][0];
+        //     std::cout << "First node vel (Blade " << blade << ", t=" << timestep
+        //               << ")=" << to_string(nodes[firstNodeIdx].velocity) << std::endl;
+        // }
     }
 
     // Biot-Savart function
@@ -203,30 +204,33 @@ namespace fvw
 
             for (size_t l = 0; l < lines.size(); ++l)
             {
+
                 const VortexLine &line = lines[l];
-                Vec3 x1 = nodes[line.startNodeIdx].position;
-                Vec3 x2 = nodes[line.endNodeIdx].position;
-                double gamma = line.gamma;
 
-                Vec3 l_vec = x2 - x1;
-                double l_squared = l_vec.x * l_vec.x + l_vec.y * l_vec.y + l_vec.z * l_vec.z;
-                double cut_l = cutOff * cutOff * l_squared;
-                double coeff = gamma / (4.0 * M_PI);
 
-                Vec3 r1 = p - x1;
-                Vec3 r2 = p - x2;
-                double r1_norm = r1.norm();
-                double r2_norm = r2.norm();
-                double r1_r2 = r1_norm * r2_norm;
-                double dot_r1_r2 = r1.dot(r2);
-                Vec3 cross_r1_r2 = r1.cross(r2);
+                    Vec3 x1 = nodes[line.startNodeIdx].position;
+                    Vec3 x2 = nodes[line.endNodeIdx].position;
+                    double gamma = line.gamma;
 
-                double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + cut_l;
+                    Vec3 l_vec = x2 - x1;
+                    double l_squared = l_vec.x * l_vec.x + l_vec.y * l_vec.y + l_vec.z * l_vec.z;
+                    double cut_l = cutOff * cutOff * l_squared;
+                    double coeff = gamma / (4.0 * M_PI);
 
-                double contribution = coeff * (r1_norm + r2_norm) / denominator;
-                Vec3 vel_contrib = cross_r1_r2 * contribution;
+                    Vec3 r1 = p - x1;
+                    Vec3 r2 = p - x2;
+                    double r1_norm = r1.norm();
+                    double r2_norm = r2.norm();
+                    double r1_r2 = r1_norm * r2_norm;
+                    double dot_r1_r2 = r1.dot(r2);
+                    Vec3 cross_r1_r2 = r1.cross(r2);
 
-                vel = vel + vel_contrib;
+                    double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + cut_l;
+
+                    double contribution = coeff * (r1_norm + r2_norm) / denominator;
+                    Vec3 vel_contrib = cross_r1_r2 * contribution;
+
+                    vel = vel + vel_contrib;
             }
 
             inducedVel[n] = vel;
