@@ -187,6 +187,18 @@ namespace fvw
         //     std::cout << "First node vel (Blade " << blade << ", t=" << timestep
         //               << ")=" << to_string(nodes[firstNodeIdx].velocity) << std::endl;
         // }
+
+        
+        // 
+        // 第一步对流：使用前向欧拉法更新 trailing vortex 节点
+        wake.nodes.emplace_back(); // 创建 t=1 的节点数组
+        std::vector<VortexNode> &nodesNext = wake.nodes[1];
+        nodesNext.resize(wake.nBlades * wake.nTrail * 3);
+
+        std::vector<std::vector<int>> controlNodeIdxNext(wake.nBlades, std::vector<int>(wake.nTrail));
+        std::vector<std::vector<int>> trailNodeIdxNext(wake.nBlades, std::vector<int>(wake.nTrail));
+        std::vector<std::vector<int>> convectNodeIdx(wake.nBlades, std::vector<int>(wake.nTrail));
+        
     }
 
     // Biot-Savart function
