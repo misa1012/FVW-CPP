@@ -45,8 +45,8 @@ namespace fvw
             : nBlades(nBlades_), nShed(nShed_), nTrail(nTrail_) {}
     };
 
-    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const Wake &wake,
-                                const TurbineParams &turbineParams, int currentTimestep, double cutOff = 0.001);
+    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const std::vector<VortexNode> &nodes, const std::vector<VortexLine> &lines,
+                                const TurbineParams &turbineParams, double cutOff = 0.001);
 
     void initializeWake(Wake &wake, const BladeGeometry &geom, const PerformanceData &perf,
                         const TurbineParams &turbineParams, const PositionData &pos, double dt);

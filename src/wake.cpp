@@ -8,11 +8,9 @@
 namespace fvw
 {
     // Biot-Savart function
-    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const Wake &wake,
-                                const TurbineParams &turbineParams, int currentTimestep, double cutOff)
+    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const std::vector<VortexNode> &nodes,
+                                const std::vector<VortexLine> &lines, const TurbineParams &turbineParams, double cutOff)
     {
-        const auto &nodes = wake.nodes[currentTimestep];
-        const auto &lines = wake.lines[currentTimestep];
         inducedVel.resize(nodes.size(), Vec3(0.0, 0.0, 0.0));
 
         for (size_t n = 0; n < nodes.size(); ++n)
@@ -212,7 +210,7 @@ namespace fvw
         std::vector<Vec3> inducedVel(nodes.size());
         std::vector<Vec3> newTrailPos(nodes.size());
 
-        computeInducedVelocity(inducedVel, wake, turbineParams, 0);
+        computeInducedVelocity(inducedVel, wake.nodes[0], wake.lines[0], turbineParams);
 
         for (int i = 0; i < NumNode0; ++i)
         {
@@ -249,7 +247,7 @@ namespace fvw
         // 第一步对流：使用前向欧拉法更新 trailing vortex 节点
         std::cout << "Advancing timestep = 1" << std::endl;
 
-        wake.nodes.emplace_back(); // 创建 t=1 的节点数组
+        wake.nodes.emplace_back(); // 创建 t=1 的节点数组，这之后不能再引用lines了，因为很可能对wake已经重新分配了内存
         std::vector<VortexNode> &nodesNext = wake.nodes[1];
         int NumNode1 = wake.nBlades * 3 * wake.nTrail;
         nodesNext.reserve(NumNode1);
