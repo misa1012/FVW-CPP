@@ -48,14 +48,11 @@ namespace fvw
             }
 
             inducedVel[n] = vel;
-
-            // std::cout << "Induced velocity at t=" << currentTimestep
-            //           << ": vel[" << n << "]=" << to_string(inducedVel[n]) << std::endl;
         }
     }
 
     // The first wake
-    void initializeWake(Wake &wake, const BladeGeometry &geom, const PerformanceData &perf,
+    void initializeWake(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                         const TurbineParams &turbineParams, const PositionData &pos, double dt)
     {
         bool if_verbose = true;
@@ -317,6 +314,34 @@ namespace fvw
                 int endIdx = boundNodeIdx[b][i + 1];
                 linesNext.push_back({startIdx, endIdx, -1 * gamma_bound[b][i], VortexLineType::NewShed});
             }
+        }
+
+        std::vector<VortexLine> linesLifting(wake.nBlades * wake.nShed);
+        for (size_t i = 0; i < linesNext.size(); ++i)
+        {
+            if (linesNext[i].type == VortexLineType::Bound)
+            {
+                linesLifting.push_back(linesNext[i]);
+            }
+        }
+
+        kuttaJoukowskiIteration(linesLifting, wake.nodes[1], perf, geom, turbineParams, pos);
+    }
+
+    // 这里的输入的lines应该是只有lifting line 也就是Bound
+    void kuttaJoukowskiIteration(std::vector<VortexLine> &lines, const std::vector<VortexNode> &nodes,
+                                 PerformanceData &perf, const BladeGeometry &geom,
+                                 const TurbineParams &turbineParams, const PositionData &pos)
+    {
+
+        int max_iter_Kutta = 200;
+
+        for (int iter = 0; iter < max_iter_Kutta; ++iter)
+        {
+            std::vector<Vec3> vel_uind_ll(nodes.size(), Vec3(0.0, 0.0, 0.0));
+            computeInducedVelocity(vel_uind_ll, nodes, lines, turbineParams);
+
+            
         }
     }
 

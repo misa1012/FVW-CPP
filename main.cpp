@@ -82,11 +82,9 @@ int main(int argc, char *argv[])
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
     // t = 0
     initializeWake(wake, geom, perf, turbineParams, pos, simParams.dt);
-    // t = 1
-    std::cout << "Wake initialization completed." << std::endl;
 
     // 现在line的位置初始化好了，应该更新gamma，这是需要循环更新
-    
+
 
     // // Update wake and compute induced velocity (示例循环)
     // for (int t = 1; t < simParams.timesteps; ++t)
