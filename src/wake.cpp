@@ -315,22 +315,11 @@ namespace fvw
                 linesNext.push_back({startIdx, endIdx, -1 * gamma_bound[b][i], VortexLineType::NewShed});
             }
         }
-
-        std::vector<VortexLine> linesLifting(wake.nBlades * wake.nShed);
-        for (size_t i = 0; i < linesNext.size(); ++i)
-        {
-            if (linesNext[i].type == VortexLineType::Bound)
-            {
-                linesLifting.push_back(linesNext[i]);
-            }
-        }
-
-        kuttaJoukowskiIteration(linesLifting, wake.nodes[1], perf, geom, turbineParams, pos);
     }
 
     // 这里的输入的lines应该是只有lifting line 也就是Bound
     void kuttaJoukowskiIteration(std::vector<VortexLine> &lines, const std::vector<VortexNode> &nodes,
-                                 PerformanceData &perf, const BladeGeometry &geom,
+                                 PerformanceData &perf, const BladeGeometry &geom, const NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos)
     {
 
@@ -341,7 +330,28 @@ namespace fvw
             std::vector<Vec3> vel_uind_ll(nodes.size(), Vec3(0.0, 0.0, 0.0));
             computeInducedVelocity(vel_uind_ll, nodes, lines, turbineParams);
 
-            
+            // 坐标转化
+            std::vector<Vec3> vel_rot(vel_uind_ll.size());
+
+            // 伪代码
+            // 对于lifting line计算出induced velocity后
+            // 需要把该Induced velocity从惯性坐标系转换到叶片坐标系
+            // （目前的问题：如果用bxnAt等更新，vel_uind_ll是三个叶片都放在一起的，而axes.bxnAt是分叶片和时间的，无法一一对应地调用）
+
+            // 再在叶片坐标系的基础上加上vel_blade，得到叶片坐标系的总速度
+
+            // 然后使用arctan计算出攻角
+            // 在图表中插值提取出cl和cd
+
+            // 计算bound vorticity
+            // 公式: 0.5*Vinf*chord*cl
+
+            // 使用relaxation_factor更新bound vortex
+            // 更新trailing vortex和shed vortex
+
+            // 判断bound vortex的error是否小于tol_kutta,如果是就可以跳出循环
+
+            // 预期返回值: bound, trail, shed vorticity 和 perf中cl, cd, aoa
         }
     }
 
