@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
     // Initialize the wake for the first timestep
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
     // t = 0
-    initializeWake(wake, geom, perf, turbineParams, pos);
+    initializeWake(wake, geom, perf, turbineParams, pos, simParams.dt);
     // t = 1
     std::cout << "Wake initialization completed." << std::endl;
 

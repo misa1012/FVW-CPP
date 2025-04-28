@@ -14,6 +14,15 @@ namespace fvw
     {
         Vec3 position;
         Vec3 velocity;
+        int idx;
+    };
+
+    enum class VortexLineType
+    {
+        Bound,
+        Shed,
+        Trailing,
+        NewShed
     };
 
     struct VortexLine
@@ -21,7 +30,7 @@ namespace fvw
         int startNodeIdx;
         int endNodeIdx;
         double gamma;
-        bool isShedding; // true: shedding, false: trailing
+        VortexLineType type;
     };
 
     struct Wake
@@ -36,11 +45,11 @@ namespace fvw
             : nBlades(nBlades_), nShed(nShed_), nTrail(nTrail_) {}
     };
 
-    void initializeWake(Wake& wake, const BladeGeometry& geom, const PerformanceData& perf,
-        const TurbineParams& turbineParams, const PositionData& pos);
-
     void computeInducedVelocity(std::vector<Vec3> &inducedVel, const Wake &wake,
                                 const TurbineParams &turbineParams, int currentTimestep, double cutOff = 0.001);
+
+    void initializeWake(Wake &wake, const BladeGeometry &geom, const PerformanceData &perf,
+                        const TurbineParams &turbineParams, const PositionData &pos, double dt);
 
     // void updateWake(Wake& wake, const PerformanceData& perf, const BladeGeometry& geom,
     //                 const TurbineParams& turbineParams, const SimParams& simParams, int currentTimestep);
