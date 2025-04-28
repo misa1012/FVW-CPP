@@ -1,6 +1,7 @@
 #include "airfoil.h"
 #include "geometry.h"
 #include "position.h"
+#include "velocity.h"
 #include "performance.h"
 #include "bem.h"
 #include "wake.h"
@@ -69,6 +70,18 @@ int main(int argc, char *argv[])
         posParams.section = "position"; // 仅验证 position
         fvw::validate(posParams, simParams, turbineParams, geom, pos);
     }
+
+    // Call velocity.h
+    // Compute velocities
+    // Section 4. Compute velocities
+    fvw::VelICS velICS(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    fvw::computeVelICS(velICS, pos, simParams, turbineParams);
+
+    fvw::VelBCS velBCS(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    fvw::NodeAxes axes(turbineParams.nBlades, simParams.timesteps,
+                       turbineParams.nSegments + 1, turbineParams.nSegments);
+    fvw::computeVelBCS(velBCS, velICS, axes, pos, simParams, turbineParams);
+    std::cout << "Velocity computation completed." << std::endl;
 
     // Initialize performance data
     fvw::PerformanceData perf(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
