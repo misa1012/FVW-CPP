@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iomanip>
 #include <ctime>
+#include <stdexcept>
 
 namespace fvw
 {
@@ -317,31 +318,92 @@ namespace fvw
         }
     }
 
+    double linearInterpolate(double x, const std::vector<double> &xp, const std::vector<double> &yp)
+    {
+        if (xp.size() != yp.size() || xp.size() < 2)
+        {
+            throw std::invalid_argument("Invalid input arrays for interpolation");
+        }
+        if (x <= xp.front())
+            return yp.front();
+        if (x >= xp.back())
+            return yp.back();
+        for (size_t i = 0; i < xp.size() - 1; ++i)
+        {
+            if (x >= xp[i] && x <= xp[i + 1])
+            {
+                double t = (x - xp[i]) / (xp[i + 1] - xp[i]);
+                return yp[i] + t * (yp[i + 1] - yp[i]);
+            }
+        }
+        throw std::runtime_error("Interpolation failed: x out of bounds");
+    }
+
+    std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
+    {
+        if (airfoilIdx < 0 || airfoilIdx >= static_cast<int>(airfoils.size()))
+        {
+            throw std::invalid_argument("Invalid airfoilIdx");
+        }
+        const AirfoilData &profile = airfoils[airfoilIdx];
+        double cl = linearInterpolate(aoa, profile.aoa, profile.cl);
+        double cd = linearInterpolate(aoa, profile.aoa, profile.cd);
+        return {cl, cd};
+    }
+
     // 这里的输入的lines应该是只有lifting line 也就是Bound
     void kuttaJoukowskiIteration(std::vector<VortexLine> &lines, const std::vector<VortexNode> &nodes,
-                                 PerformanceData &perf, const BladeGeometry &geom, const NodeAxes &axes,
-                                 const TurbineParams &turbineParams, const PositionData &pos)
+                                 PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
+                                 const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils)
     {
 
         int max_iter_Kutta = 200;
+        int current_t = 1;
+
+        int nShed = turbineParams.nSegments;
 
         for (int iter = 0; iter < max_iter_Kutta; ++iter)
         {
-            std::vector<Vec3> vel_uind_ll(nodes.size(), Vec3(0.0, 0.0, 0.0));
+            std::vector<Vec3> vel_uind_ll(lines.size(), Vec3(0.0, 0.0, 0.0));
             computeInducedVelocity(vel_uind_ll, nodes, lines, turbineParams);
 
             // 坐标转化
-            std::vector<Vec3> vel_rot(vel_uind_ll.size());
+            std::vector<Vec3> vel_tot(lines.size());
+            std::vector<int> NFoil(lines.size());
+
+            int node_idx_counter = 0;
 
             // 伪代码
             // 对于lifting line计算出induced velocity后
             // 需要把该Induced velocity从惯性坐标系转换到叶片坐标系
             // （目前的问题：如果用bxnAt等更新，vel_uind_ll是三个叶片都放在一起的，而axes.bxnAt是分叶片和时间的，无法一一对应地调用）
-
+            // 目前尝试根据Idx调用
             // 再在叶片坐标系的基础上加上vel_blade，得到叶片坐标系的总速度
+            for (int b = 0; b < turbineParams.nBlades; ++b)
+            {
+                for (int i = 0; i < nShed; ++i)
+                {
+                    Vec3 uind = vel_uind_ll[node_idx_counter];
+                    vel_tot[node_idx_counter].x = velBCS.at(b, current_t, i).x + axes.bxtAt(b, current_t, i).dot(uind);
+                    vel_tot[node_idx_counter].y = velBCS.at(b, current_t, i).y + axes.bytAt(b, current_t, i).dot(uind);
+                    vel_tot[node_idx_counter].z = velBCS.at(b, current_t, i).z + axes.bztAt(b, current_t, i).dot(uind);
+                    NFoil[node_idx_counter] = geom.airfoilIndex[i];
+                    node_idx_counter++;
+                }
+            }
 
             // 然后使用arctan计算出攻角
             // 在图表中插值提取出cl和cd
+            std::vector<double> aoa(lines.size());
+            std::vector<double> cl(lines.size());
+            std::vector<double> cd(lines.size());
+            for (int i = 0; i < lines.size(); i++)
+            {
+                aoa[i] = std::atan2(-vel_tot[i].y, vel_tot[i].x) * 180.0 / M_PI;
+                auto [cl_value, cd_value] = interpolateClCd(NFoil[i], aoa[i], airfoils);
+                cl[i] = cl_value;
+                cd[i] = cd_value;
+            }
 
             // 计算bound vorticity
             // 公式: 0.5*Vinf*chord*cl

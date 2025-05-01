@@ -105,9 +105,9 @@ int main(int argc, char *argv[])
             linesLifting.push_back(wake.lines[1][i]);
         }
     }
-    kuttaJoukowskiIteration(linesLifting, wake.nodes[1], perf, geom, axes, turbineParams, pos);
+    kuttaJoukowskiIteration(linesLifting, wake.nodes[1], perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
-    
+
 
     // // Update wake and compute induced velocity (示例循环)
     // for (int t = 1; t < simParams.timesteps; ++t)

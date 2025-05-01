@@ -6,6 +6,7 @@
 #include "position.h"
 #include "utils.h"
 #include "velocity.h"
+#include "airfoil.h"
 #include <vector>
 
 namespace fvw
@@ -53,8 +54,8 @@ namespace fvw
                         const TurbineParams &turbineParams, const PositionData &pos, double dt);
 
     void kuttaJoukowskiIteration(std::vector<VortexLine> &lines, const std::vector<VortexNode> &nodes,
-                                 PerformanceData &perf, const BladeGeometry &geom, const NodeAxes &axes,
-                                 const TurbineParams &turbineParams, const PositionData &pos);
+                                 PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
+                                 const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils);
 
 } // namespace fvw
 
