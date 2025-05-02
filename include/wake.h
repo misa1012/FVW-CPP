@@ -47,14 +47,13 @@ namespace fvw
             : nBlades(nBlades_), nShed(nShed_), nTrail(nTrail_) {}
     };
 
-    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const std::vector<VortexNode> &nodes,
+    void computeInducedVelocity(std::vector<Vec3> &inducedVel, std::vector<VortexNode> &pNodes, const std::vector<VortexNode> &nodes,
                                 const std::vector<VortexLine> &lines, const TurbineParams &turbineParams, double cutOff = 0.001);
 
     void initializeWake(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                         const TurbineParams &turbineParams, const PositionData &pos, double dt);
 
-    void kuttaJoukowskiIteration(std::vector<VortexLine> &lines, const std::vector<VortexNode> &nodes,
-                                 PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
+    void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils);
 
 } // namespace fvw

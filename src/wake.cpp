@@ -9,14 +9,14 @@
 namespace fvw
 {
     // Biot-Savart function
-    void computeInducedVelocity(std::vector<Vec3> &inducedVel, const std::vector<VortexNode> &nodes,
+    void computeInducedVelocity(std::vector<Vec3> &inducedVel, std::vector<VortexNode> &pNodes, const std::vector<VortexNode> &nodes,
                                 const std::vector<VortexLine> &lines, const TurbineParams &turbineParams, double cutOff)
     {
         inducedVel.resize(nodes.size(), Vec3(0.0, 0.0, 0.0));
 
         for (size_t n = 0; n < nodes.size(); ++n)
         {
-            Vec3 p = nodes[n].position;
+            Vec3 p = pNodes[n].position;
             Vec3 vel(0.0, 0.0, 0.0);
 
             for (size_t l = 0; l < lines.size(); ++l)
@@ -208,7 +208,7 @@ namespace fvw
         std::vector<Vec3> inducedVel(nodes.size());
         std::vector<Vec3> newTrailPos(nodes.size());
 
-        computeInducedVelocity(inducedVel, wake.nodes[0], wake.lines[0], turbineParams);
+        computeInducedVelocity(inducedVel, wake.nodes[0], wake.nodes[0], wake.lines[0], turbineParams);
 
         for (int i = 0; i < NumNode0; ++i)
         {
@@ -318,58 +318,63 @@ namespace fvw
         }
     }
 
-    double linearInterpolate(double x, const std::vector<double> &xp, const std::vector<double> &yp)
-    {
-        if (xp.size() != yp.size() || xp.size() < 2)
-        {
-            throw std::invalid_argument("Invalid input arrays for interpolation");
-        }
-        if (x <= xp.front())
-            return yp.front();
-        if (x >= xp.back())
-            return yp.back();
-        for (size_t i = 0; i < xp.size() - 1; ++i)
-        {
-            if (x >= xp[i] && x <= xp[i + 1])
-            {
-                double t = (x - xp[i]) / (xp[i + 1] - xp[i]);
-                return yp[i] + t * (yp[i + 1] - yp[i]);
-            }
-        }
-        throw std::runtime_error("Interpolation failed: x out of bounds");
-    }
-
     std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
     {
         if (airfoilIdx < 0 || airfoilIdx >= static_cast<int>(airfoils.size()))
         {
             throw std::invalid_argument("Invalid airfoilIdx");
         }
-        const AirfoilData &profile = airfoils[airfoilIdx];
-        double cl = linearInterpolate(aoa, profile.aoa, profile.cl);
-        double cd = linearInterpolate(aoa, profile.aoa, profile.cd);
+
+        double cl = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
+        double cd = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
         return {cl, cd};
     }
 
     // 这里的输入的lines应该是只有lifting line 也就是Bound
-    void kuttaJoukowskiIteration(std::vector<VortexLine> &lines, const std::vector<VortexNode> &nodes,
-                                 PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
+    void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils)
     {
 
-        int max_iter_Kutta = 200;
+        int max_iter_Kutta = 2;
         int current_t = 1;
+
+        double relaxation_factor = 0.3;
+
+        std::vector<fvw::VortexLine> linesLiftingGamma(wake.nBlades * wake.nShed);
+        for (size_t i = 0; i < wake.lines[1].size(); ++i)
+        {
+            if (wake.lines[1][i].type == fvw::VortexLineType::Bound)
+            {
+                linesLiftingGamma.push_back(wake.lines[1][i]);
+            }
+        }
+
+        // 提取出Pos['bound']的值
+        std::vector<VortexNode> liftingLinesNode(turbineParams.nBlades * turbineParams.nSegments);
+        for (int b = 0; b < turbineParams.nBlades; ++b)
+        {
+            for (int i = 0; i < turbineParams.nSegments; ++i)
+            {
+
+                liftingLinesNode.push_back({pos.boundAt(b, 0, i)});
+            }
+        }
 
         int nShed = turbineParams.nSegments;
 
         for (int iter = 0; iter < max_iter_Kutta; ++iter)
         {
-            std::vector<Vec3> vel_uind_ll(lines.size(), Vec3(0.0, 0.0, 0.0));
-            computeInducedVelocity(vel_uind_ll, nodes, lines, turbineParams);
+            std::vector<Vec3> vel_uind_ll(liftingLinesNode.size(), Vec3(0.0, 0.0, 0.0));
+            // 对每一个lifting line上的node，计算所有Line的contribution
+            // 需要debug: This is not node, it the middle of the line (need to re-define)
+            // Nodes debug完了，但是wake.nodes[current_t], wake.lines[current_t]的构造似乎有问题，导致了段错误，需要进一步debug
+            computeInducedVelocity(vel_uind_ll, liftingLinesNode, wake.nodes[current_t], wake.lines[current_t], turbineParams);
 
             // 坐标转化
-            std::vector<Vec3> vel_tot(lines.size());
-            std::vector<int> NFoil(lines.size());
+            std::vector<Vec3> vel_tot(liftingLinesNode.size());
+            std::vector<double> Vinf(liftingLinesNode.size());
+            std::vector<int> NFoil(liftingLinesNode.size());
+            std::vector<double> chord(liftingLinesNode.size());
 
             int node_idx_counter = 0;
 
@@ -387,28 +392,40 @@ namespace fvw
                     vel_tot[node_idx_counter].x = velBCS.at(b, current_t, i).x + axes.bxtAt(b, current_t, i).dot(uind);
                     vel_tot[node_idx_counter].y = velBCS.at(b, current_t, i).y + axes.bytAt(b, current_t, i).dot(uind);
                     vel_tot[node_idx_counter].z = velBCS.at(b, current_t, i).z + axes.bztAt(b, current_t, i).dot(uind);
+                    Vinf[node_idx_counter] = vel_tot[node_idx_counter].x * vel_tot[node_idx_counter].x + vel_tot[node_idx_counter].y * vel_tot[node_idx_counter].y + vel_tot[node_idx_counter].z * vel_tot[node_idx_counter].z;
                     NFoil[node_idx_counter] = geom.airfoilIndex[i];
+                    chord[node_idx_counter] = geom.chordShedding[i];
                     node_idx_counter++;
                 }
             }
 
-            // 然后使用arctan计算出攻角
-            // 在图表中插值提取出cl和cd
-            std::vector<double> aoa(lines.size());
-            std::vector<double> cl(lines.size());
-            std::vector<double> cd(lines.size());
-            for (int i = 0; i < lines.size(); i++)
+            std::vector<double> aoa(liftingLinesNode.size());
+            std::vector<double> cl(liftingLinesNode.size());
+            std::vector<double> cd(liftingLinesNode.size());
+            std::vector<double> gamma_new(liftingLinesNode.size());
+            std::vector<double> dg(liftingLinesNode.size());
+            double max_dg = 0.0;
+
+            for (int i = 0; i < liftingLinesNode.size(); i++)
             {
+                // 然后使用arctan计算出攻角
                 aoa[i] = std::atan2(-vel_tot[i].y, vel_tot[i].x) * 180.0 / M_PI;
+
+                // 在图表中插值提取出cl和cd
                 auto [cl_value, cd_value] = interpolateClCd(NFoil[i], aoa[i], airfoils);
                 cl[i] = cl_value;
                 cd[i] = cd_value;
+
+                // 计算bound vorticity
+                // 公式: 0.5*Vinf*chord*cl
+                gamma_new[i] = 0.5 * Vinf[i] * chord[i] * cl[i];
+                dg[i] = gamma_new[i] - linesLiftingGamma[i].gamma;
+
+                // 使用relaxation_factor更新bound vortex
+                linesLiftingGamma[i].gamma = linesLiftingGamma[i].gamma + relaxation_factor * dg[i];
+                max_dg = std::max(max_dg, std::abs(dg[i]));
             }
 
-            // 计算bound vorticity
-            // 公式: 0.5*Vinf*chord*cl
-
-            // 使用relaxation_factor更新bound vortex
             // 更新trailing vortex和shed vortex
 
             // 判断bound vortex的error是否小于tol_kutta,如果是就可以跳出循环

@@ -97,17 +97,8 @@ int main(int argc, char *argv[])
     initializeWake(wake, geom, perf, turbineParams, pos, simParams.dt);
 
     // 现在line的位置初始化好了，应该更新gamma，这是需要循环更新
-    std::vector<fvw::VortexLine> linesLifting(wake.nBlades * wake.nShed);
-    for (size_t i = 0; i < wake.lines[1].size(); ++i)
-    {
-        if (wake.lines[1][i].type == fvw::VortexLineType::Bound)
-        {
-            linesLifting.push_back(wake.lines[1][i]);
-        }
-    }
-    kuttaJoukowskiIteration(linesLifting, wake.nodes[1], perf, geom, axes, turbineParams, pos, velBCS, airfoils);
-
-
+    // 这个需要pos['bound']的位置
+    kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
     // // Update wake and compute induced velocity (示例循环)
     // for (int t = 1; t < simParams.timesteps; ++t)
