@@ -94,11 +94,11 @@ int main(int argc, char *argv[])
     // Initialize the wake for the first timestep
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
     // t = 0
-    initializeWake(wake, geom, perf, turbineParams, pos, simParams.dt);
+    InitializeWake(wake, geom, perf, turbineParams, pos, simParams.dt);
 
     // 现在line的位置初始化好了，应该更新gamma，这是需要循环更新
     // 这个需要pos['bound']的位置
-    kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
+    // kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
     // // Update wake and compute induced velocity (示例循环)
     // for (int t = 1; t < simParams.timesteps; ++t)
