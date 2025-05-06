@@ -1,6 +1,7 @@
 #include "airfoil.h"
 #include "geometry.h"
 #include "position.h"
+#include "velocity.h"
 #include "performance.h"
 #include "bem.h"
 #include "wake.h"
@@ -33,7 +34,7 @@ int main(int argc, char *argv[])
     turbineParams.nSegments = 18;
     turbineParams.tsr = 7.0;
     turbineParams.omega = turbineParams.tsr * turbineParams.windSpeed / turbineParams.rTip;
-    
+
     // Compute blade geometry
     auto geom = fvw::computeBladeGeometry(turbineParams);
     std::cout << "Blade geometry computed." << std::endl;
@@ -70,6 +71,18 @@ int main(int argc, char *argv[])
         fvw::validate(posParams, simParams, turbineParams, geom, pos);
     }
 
+    // Call velocity.h
+    // Compute velocities
+    // Section 4. Compute velocities
+    fvw::VelICS velICS(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    fvw::computeVelICS(velICS, pos, simParams, turbineParams);
+
+    fvw::VelBCS velBCS(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
+    fvw::NodeAxes axes(turbineParams.nBlades, simParams.timesteps,
+                       turbineParams.nSegments + 1, turbineParams.nSegments);
+    fvw::computeVelBCS(velBCS, velICS, axes, pos, simParams, turbineParams);
+    std::cout << "Velocity computation completed." << std::endl;
+
     // Initialize performance data
     fvw::PerformanceData perf(turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
     std::cout << "Performance data is initialized." << std::endl;
@@ -80,23 +93,28 @@ int main(int argc, char *argv[])
 
     // Initialize the wake for the first timestep
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
-    // t = 0
-    initializeWake(wake, geom, perf, turbineParams, pos);
-    // t = 1
-    std::cout << "Wake initialization completed." << std::endl;
+    // t=0
+    InitializeWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt);
 
-    // // Update wake and compute induced velocity (示例循环)
-    // for (int t = 1; t < simParams.timesteps; ++t)
-    // {
-    //     fvw::updateWake(wake, vel, simParams);
-    //     fvw::computeInducedVelocity(vel, wake, geom, turbineParams, simParams);
-    // fvw::computeVelICS(velICS, pos, simParams, turbineParams);
-    // fvw::computeVelBCS(velBCS, velICS, axes, pos, simParams, turbineParams);
-    //     // 重新计算迎角和 BEM
-    //     fvw::computeAoAG(aoag, vel, turbineParams.nBlades, simParams.timesteps, turbineParams.nSegments);
-    //     fvw::computeBEM(perf, aoag, geom, turbineParams, airfoils);
-    // }
-    // std::cout << "Wake computation completed." << std::endl;
+    // --- 主时步推进循环 ---
+    for (int t = 1; t < simParams.timesteps; ++t)
+    {
+        std::cout << "\n--- Advancing timestep " << t << " ---" << std::endl;
+        // 1. 推进尾迹结构到时间步 t
+        // 这将对流 t-1 的节点并添加 t 的新附着节点。
+        // 注意：AdvanceWakeStructure 已经确保时间步 t 存在。
+        AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt, t);
+
+        // 2. 对时间步 t 执行 Kutta-Joukowski 迭代
+        // 这将更新时间步 t 的附着涡线、脱落涡线和分离涡线的 gamma 值。
+        kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
+
+        // 3. 更新时间步 t 的尾迹节点速度
+        // 根据更新后的 gamma 值计算所有节点的总速度（诱导速度 + 自由来流速度）。
+        UpdateWakeVelocities(wake, turbineParams, t);
+    }
+
+    std::cout << "Wake computation completed." << std::endl;
 
     return 0;
 }
