@@ -18,7 +18,6 @@ namespace fvw
     {
         Vec3 position;
         Vec3 velocity;
-        int idx;
     };
 
     // 这个区分似乎，不太合理，区分了NewShed，也应该区分NewTrailing？
@@ -40,11 +39,18 @@ namespace fvw
     // --- 单个叶片在一个时间步的尾迹信息 ---
     struct BladeWake
     {
-        std::vector<VortexNode> nodes;     // 该叶片在该时间步的所有尾迹节点 (包括叶片上的附着涡节点)
-        std::vector<VortexLine> lines;     // 连接该叶片内部节点的涡线段
-        std::vector<int> boundNodeIndices; // t=n 时刻的附着涡节点索引 (nTrail)
-        std::vector<int> trailNodeIndices; // t=n 时刻的尾迹节点索引 (nTrail)
+        std::vector<VortexNode> nodes;      // 该叶片在该时间步的所有尾迹节点 (包括叶片上的附着涡节点)
+        std::vector<VortexLine> lines;      // 连接该叶片内部节点的涡线段
+        
+        std::vector<int> boundNodeIndices;  // t=n 时刻的附着涡节点索引 (nTrail)
+        std::vector<int> trailNodeIndices;  // t=n 时刻的尾迹节点索引 (nTrail)
+
         std::vector<double> prevGammaBound; // 存储 t=n-1 的 Bound 涡量强度
+
+        // 存储不同类型涡线在 lines 向量中的索引，方便快速访问
+        std::vector<int> boundLineIndices;   // Size nShed
+        std::vector<int> trailingLineIndices; // Size nTrail
+        std::vector<int> shedLineIndices;     // Size nShed
 
         // 构造函数
         BladeWake(int nTrail)
@@ -53,7 +59,12 @@ namespace fvw
             trailNodeIndices.resize(nTrail, -1);
             nodes.reserve(3 * nTrail);                    // 2*nTrail (对流) + nTrail (新附着涡)
             lines.reserve(3 * (nTrail - 1) + 2 * nTrail); // Bound + Trailing + Shed
-            prevGammaBound.resize(nTrail - 1, 0.0); // nShed = nTrail - 1
+            prevGammaBound.resize(nTrail - 1, 0.0);       // nShed = nTrail - 1
+
+            // 初始化新增的索引向量
+            boundLineIndices.resize(nTrail - 1, -1);
+            trailingLineIndices.resize(nTrail, -1);
+            shedLineIndices.resize(nTrail - 1, -1);
         }
 
         // 可以在这里添加辅助函数，例如添加节点/线段并返回索引
@@ -63,7 +74,7 @@ namespace fvw
             return nodes.size() - 1; // 返回新添加节点的索引
         }
 
-        void addLine(const VortexLine &line)
+        int addLine(const VortexLine &line)
         {
             // 可以添加检查，确保索引有效
             if (line.startNodeIdx >= nodes.size() || line.endNodeIdx >= nodes.size() || line.startNodeIdx < 0 || line.endNodeIdx < 0)
@@ -71,6 +82,7 @@ namespace fvw
                 throw std::out_of_range("VortexLine node index out of range for BladeWake.");
             }
             lines.push_back(line);
+            return lines.size() - 1; // 返回新添加线段的索引
         }
     };
 
@@ -163,6 +175,7 @@ namespace fvw
 
     // --- 函数声明 ---
 
+    // Biot-Savart function
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
                                 const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.001);
 
@@ -171,9 +184,9 @@ namespace fvw
 
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep);
 
-    // void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
-    //                              const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils);
-
+    void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
+                                 const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,
+                                 std::vector<AirfoilData> &airfoils);
 } // namespace fvw
 
 #endif // FVW_WAKE_H

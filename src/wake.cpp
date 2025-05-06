@@ -140,27 +140,30 @@ namespace fvw
 
             // 3. 添加 t=0 的涡线
             // 添加附着涡线 (Bound)
+            currentBladeWake.boundLineIndices.resize(wake.nShed, -1);
             for (int i = 0; i < wake.nShed; ++i)
             {
                 int startIdx = currentBladeWake.boundNodeIndices[i];
                 int endIdx = currentBladeWake.boundNodeIndices[i + 1];
-                currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
+                currentBladeWake.boundLineIndices[i] = currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
             }
 
             // 添加初始尾迹涡线 (Trailing) - 连接叶片和第一层尾迹节点
+            currentBladeWake.trailingLineIndices.resize(wake.nTrail, -1);
             for (int i = 0; i < wake.nTrail; ++i)
             {
                 int startIdx = currentBladeWake.trailNodeIndices[i];
                 int endIdx = currentBladeWake.boundNodeIndices[i];
-                currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
+                currentBladeWake.trailingLineIndices[i] = currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
             }
 
             // 添加初始脱落涡线 (Shed) - 连接相邻的初始尾迹节点
+            currentBladeWake.shedLineIndices.resize(wake.nShed, -1);
             for (int i = 0; i < wake.nShed; ++i)
             {
                 int startIdx = currentBladeWake.trailNodeIndices[i];
                 int endIdx = currentBladeWake.trailNodeIndices[i + 1];
-                currentBladeWake.addLine({startIdx, endIdx, -gamma_bound[i], VortexLineType::Shed});
+                currentBladeWake.shedLineIndices[i] = currentBladeWake.addLine({startIdx, endIdx, -gamma_bound[i], VortexLineType::Shed});
             }
         }
 
@@ -184,7 +187,7 @@ namespace fvw
 
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep)
     {
-        // 计算诱导速度，叠加到节点速度     
+        // 计算诱导速度，叠加到节点速度
         Vec3 initialFreeStreamVel = Vec3(turbineParams.windSpeed, 0.0, 0.0);
 
         // 1. 收集所有节点的位置作为目标点
@@ -228,7 +231,13 @@ namespace fvw
     }
 
     // 把wake向前convect一步
-    // 
+    // 该function的作用：
+    // 1. 建立新的一步（t=n）的wake structure, how to archieve: wake.getBladeWake(currentTimestep, b)
+    // 2. 读取上一步的bound vortex strength并存下来
+    // 3. 处理新一步的节点：1) 把上一步的node根据速度convect；2)添加新的bound vortex node在quater chord line
+    // 4. 处理新一步的vortex：1）把上一步的trail和shed复制到这一步（对应的start和end idx更新）；
+    //                       2）生成新的bound和trail，需要add line附着到这上面（gamma暂时附一个值,后面需要通过Kutta循环更新)
+    //                       3）上一步的bound变成这一步的shed,但是不需要上一步的信息了(直接丢弃),在这一步重新定义.(其vortex strength也需要在kutta循环中更新)
     void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                               const TurbineParams &turbineParams, const PositionData &pos,
                               double dt, int currentTimestep)
@@ -266,8 +275,13 @@ namespace fvw
             // 1. 对流 t=n-1 的所有节点到 t=n
             currentBladeWake.nodes.clear();
             currentBladeWake.lines.clear();
-            currentBladeWake.boundNodeIndices.resize(wake.nTrail, -1);
-            currentBladeWake.trailNodeIndices.resize(wake.nTrail, -1);
+            currentBladeWake.boundNodeIndices.assign(wake.nTrail, -1); // Resize and initialize with -1
+            currentBladeWake.trailNodeIndices.assign(wake.nTrail, -1); // Resize and initialize with -1
+
+            // Resize line index vectors
+            currentBladeWake.boundLineIndices.assign(wake.nShed, -1);
+            currentBladeWake.trailingLineIndices.assign(wake.nTrail, -1);
+            currentBladeWake.shedLineIndices.assign(wake.nShed, -1);
 
             // 对流节点：保持 t=n-1 的索引顺序
             // 对流所有涡点 (这个需要调整一下,是对流所有的涡点)
@@ -286,17 +300,17 @@ namespace fvw
                     if (i == prevBladeWake.boundNodeIndices[j])
                     {
                         currentBladeWake.trailNodeIndices[j] = newIdx;
+                        break;
                     }
                 }
             }
 
             // 2. 添加 t=n 的新附着涡节点
-            std::vector<int> newBoundNodeIndices(wake.nTrail);
             for (int i = 0; i < wake.nTrail; ++i)
             {
                 Vec3 boundPos = pos.quarterAt(b, currentTimestep, i);
-                newBoundNodeIndices[i] = currentBladeWake.addNode({boundPos, initialFreeStreamVel});
-                currentBladeWake.boundNodeIndices[i] = newBoundNodeIndices[i];
+                int newIdx = currentBladeWake.addNode({boundPos, initialFreeStreamVel});
+                currentBladeWake.boundNodeIndices[i] = newIdx;
             }
 
             // 3. 添加 t=n 的涡量线(拓扑结构) - Gamma将在Kutta迭代中确定
@@ -312,34 +326,59 @@ namespace fvw
                         std::cerr << "Invalid mapped index for line at t=" << currentTimestep << std::endl;
                         continue;
                     }
-                    currentBladeWake.addLine({newStartIdx, newEndIdx, line.gamma, line.type});
+                    int _ = currentBladeWake.addLine({newStartIdx, newEndIdx, line.gamma, line.type});
                 }
             }
 
             // 新 Bound 涡量线
             // 需要改：应该用上一步的bound update -- 已改
-            std::vector<double> gamma_bound(wake.nShed);
             for (int i = 0; i < wake.nShed; ++i)
             {
-                int startIdx = newBoundNodeIndices[i];
-                int endIdx = newBoundNodeIndices[i + 1];
-                gamma_bound[i] = currentBladeWake.prevGammaBound[i];
-                currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
+                int startIdx = currentBladeWake.boundNodeIndices[i];
+                int endIdx = currentBladeWake.boundNodeIndices[i + 1];
+                double initial_gamma = 0.0;
+                if (i < currentBladeWake.prevGammaBound.size())
+                {
+                    initial_gamma = currentBladeWake.prevGammaBound[i];
+                }
+                else
+                {
+                    std::cerr << "Warning: prevGammaBound index out of bounds for blade " << b << ", segment " << i << " at t=" << currentTimestep << ". Initializing new bound gamma to 0." << std::endl;
+                }
+
+                // Add the new bound line and store its index
+                int newLineIdx = currentBladeWake.addLine({startIdx, endIdx, initial_gamma, VortexLineType::Bound});
+                if (i < currentBladeWake.boundLineIndices.size())
+                {
+                    currentBladeWake.boundLineIndices[i] = newLineIdx;
+                }
+                else
+                {
+                    std::cerr << "Error: boundLineIndices out of bounds when storing new bound line index for blade " << b << ", segment " << i << " at t=" << currentTimestep << std::endl;
+                }
             }
 
             // 新 Trailing 涡量线
             std::vector<double> gamma_trail(wake.nTrail);
-            gamma_trail[0] = gamma_bound[0];
+            gamma_trail[0] = currentBladeWake.prevGammaBound[0];
             for (int i = 1; i < wake.nShed; ++i)
             {
-                gamma_trail[i] = gamma_bound[i] - gamma_bound[i - 1];
+                gamma_trail[i] = currentBladeWake.prevGammaBound[i] - currentBladeWake.prevGammaBound[i - 1];
             }
-            gamma_trail[wake.nShed] = -gamma_bound[wake.nShed - 1];
+            gamma_trail[wake.nShed] = -currentBladeWake.prevGammaBound[wake.nShed - 1];
             for (int i = 0; i < wake.nTrail; ++i)
             {
                 int startIdx = currentBladeWake.trailNodeIndices[i];
-                int endIdx = newBoundNodeIndices[i]; 
-                currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
+                int endIdx = currentBladeWake.boundNodeIndices[i];
+                int newLineIdx = currentBladeWake.addLine({startIdx, endIdx, 0.0, VortexLineType::Trailing});
+                if (i < currentBladeWake.trailingLineIndices.size())
+                {
+                    currentBladeWake.trailingLineIndices[i] = newLineIdx;
+                }
+                else
+                {
+                    std::cerr << "Error: trailingLineIndices out of bounds when storing new trailing line index for blade " << b << ", segment " << i << " at t=" << currentTimestep << std::endl;
+                }
             }
 
             // 新 Shed 涡量线
@@ -348,12 +387,24 @@ namespace fvw
             {
                 int startIdx = currentBladeWake.trailNodeIndices[i];
                 int endIdx = currentBladeWake.trailNodeIndices[i + 1];
-                // 这里不太对，需要改 -- 暂时初始化gamma为0.0，后面在kutta再更新？
-                currentBladeWake.addLine({startIdx, endIdx, 0.0, VortexLineType::Shed});
+                //  暂时初始化gamma为0.0，后面在kutta再更新？
+                int newLineIdx = currentBladeWake.addLine({startIdx, endIdx, 0.0, VortexLineType::Shed});
+                if (i < currentBladeWake.shedLineIndices.size())
+                {
+                    currentBladeWake.shedLineIndices[i] = newLineIdx;
+                }
+                else
+                {
+                    std::cerr << "Error: shedLineIndices out of bounds when storing new shed line index for blade " << b << ", segment " << i << " at t=" << currentTimestep << std::endl;
+                }
             }
 
             // 接下来就应该调用kutta循环来更新gamma？
+            // The Kutta-Joukowski iteration will be called after AdvanceWakeStructure
+            // to update the gamma values for the newly created lines.
         }
+
+        std::cout << "Wake structure advanced to timestep " << currentTimestep << "." << std::endl;
     }
 
     // --------------------------------
@@ -369,123 +420,325 @@ namespace fvw
         AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, dt, 1);
     }
 
+    // --------------------------------
+    std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
+    {
+        if (airfoilIdx < 0 || airfoilIdx >= static_cast<int>(airfoils.size()))
+        {
+            throw std::invalid_argument("Invalid airfoilIdx");
+        }
+
+        double cl = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
+        double cd = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
+        return {cl, cd};
+    }
+
+    // Kutta循环 update vortex strength
+    void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
+                                 const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,
+                                 std::vector<AirfoilData> &airfoils)
+    {
+        const int maxIterations = 50;
+        const double convergenceThreshold = 1e-3;
+        const double relaxationFactor = 0.3;
+        bool if_verbose = false;
+
+        // 获取当前时间步（假设为最新的时间步）
+        int currentTimestep = wake.bladeWakes.size() - 1;
+
+        if (currentTimestep < 0)
+        {
+            std::cerr << "Error: No wake data available for Kutta-Joukowski iteration." << std::endl;
+            return;
+        }
+
+        std::cout << "Starting Kutta-Joukowski iteration for timestep " << currentTimestep << "..." << std::endl;
+
+        double max_dg = 0.0; // 用于检查收敛的最大 Gamma 变化量
+        // 开始循环
+        for (int iter = 0; iter < maxIterations; ++iter)
+        {
+            if (if_verbose)
+            {
+                std::cout << "  Kutta-Joukowski Iteration " << iter + 1 << "/" << maxIterations << std::endl;
+            }
+
+            max_dg = 0.0;
+
+            // --- 1. 计算当前附着涡控制点的诱导速度 ---
+            // 控制点通常取翼型的 1/4 弦长点 bound
+            std::vector<Vec3> controlPointPositions;
+            // 用于记录每个控制点对应哪个叶片和哪个叶片节段 (blade_idx, segment_idx)
+            std::vector<std::pair<int, int>> controlPointMapping;
+
+            for (int b = 0; b < wake.nBlades; ++b)
+            {
+
+                // 遍历当前叶片的所有附着涡线段对应的控制点 (nShed 个)
+                for (int i = 0; i < wake.nShed; ++i)
+                {
+                    // 获取控制点位置 (1/4 弦长点)
+                    try
+                    {
+                        Vec3 boundPos = pos.boundAt(b, currentTimestep, i);
+                        controlPointPositions.push_back(boundPos);
+                        // 记录控制点对应的叶片和节段索引
+                        controlPointMapping.push_back({b, i});
+                    }
+                    catch (const std::out_of_range &e)
+                    {
+                        std::cerr << "Error accessing bound point for blade " << b << ", segment " << i << " at timestep " << currentTimestep << ": " << e.what() << std::endl;
+                        continue; // 跳过这个无效的控制点
+                    }
+                }
+            }
+
+            // 如果没有控制点，则无法进行迭代
+            if (controlPointPositions.empty())
+            {
+                std::cerr << "Warning: No control points found for Kutta iteration at timestep " << currentTimestep << "." << std::endl;
+                break; // 退出 Kutta 循环
+            }
+
+            // --- 2. 计算这些控制点上的诱导速度 ---
+            // 诱导速度来自整个尾迹结构 (所有时间步，所有叶片的所有涡线)
+            std::vector<Vec3> inducedVelocities;
+            // computeInducedVelocity 函数已经设计为计算整个 Wake 在目标点上的诱导速度
+            computeInducedVelocity(inducedVelocities, controlPointPositions, wake, currentTimestep, turbineParams);
+
+            // --- 3. 计算有效速度，攻角，所需的附着涡强度，并更新附着涡 ---
+            
+            // 存储本迭代计算出的新的附着涡强度，用于后续更新 Trailing 和 Shed 涡线
+            std::vector<std::vector<double>> updatedBoundGammas(wake.nBlades, std::vector<double>(wake.nShed));
+
+            for (size_t k = 0; k < controlPointPositions.size(); ++k)
+            {
+                // 获取当前控制点对应的叶片和节段索引
+                int b = controlPointMapping[k].first;
+                int i = controlPointMapping[k].second; // 节段索引 (0 到 nShed-1)
+
+                // 获取当前叶片在该时间步的 BladeWake 结构（非 const 版本，以便修改线段 gamma）
+                BladeWake &currentBladeWake = wake.getBladeWake(currentTimestep, b);
+
+                // 获取当前控制点上的诱导速度 (来自整个尾迹)
+                Vec3 uind = inducedVelocities[k];
+
+                // uind 是在惯性系下。需要将 uind 转换到叶片坐标系。
+                const Vec3 &bxt = axes.bxtAt(b, currentTimestep, i); // 叶片切向 (弦向) 轴
+                const Vec3 &byt = axes.bytAt(b, currentTimestep, i); // 垂直于弦，在旋转面内 (影响攻角)
+                const Vec3 &bzt = axes.bztAt(b, currentTimestep, i); // 径向轴
+                Vec3 uind_blade_frame;
+                uind_blade_frame.x = bxt.dot(uind); // 沿弦方向的分量
+                uind_blade_frame.y = byt.dot(uind); // 垂直于弦方向的分量 (影响攻角)
+                uind_blade_frame.z = bzt.dot(uind); // 沿径向的分量
+
+                // 计算有效速度 (在叶片坐标系下)
+                Vec3 vel_eff_blade_frame = velBCS.at(b, currentTimestep, i) + uind_blade_frame;
+
+                // 计算有效速度的模长
+                double Vinf_eff_squared = vel_eff_blade_frame.x * vel_eff_blade_frame.x +
+                                          vel_eff_blade_frame.y * vel_eff_blade_frame.y +
+                                          vel_eff_blade_frame.z * vel_eff_blade_frame.z;
+                double Vinf_eff = std::sqrt(Vinf_eff_squared);
+
+                // 计算攻角 (AoA)
+                double aoa_rad = std::atan2(-vel_eff_blade_frame.y, vel_eff_blade_frame.x);
+                double aoa_deg = aoa_rad * 180.0 / M_PI;
+
+                // 获取对应节段的翼型数据索引
+                int airfoilIdx = geom.airfoilIndex[i];
+                // 插值获取升力系数 Cl
+                std::pair<double, double> clcd_values;
+                try
+                {
+                    clcd_values = interpolateClCd(airfoilIdx, aoa_deg, airfoils);
+                }
+                catch (const std::exception &e)
+                {
+                    std::cerr << "Error interpolating airfoil data for blade " << b << ", segment " << i << ", timestep " << currentTimestep << ": " << e.what() << ". Setting gamma to 0." << std::endl;
+                    updatedBoundGammas[b][i] = 0.0;
+                    continue;
+                }
+                double cl_value = clcd_values.first;
+
+                // 计算维持当前 Cl 所需的附着涡强度 (根据 Kutta-Joukowski 定理)
+                // 公式: Gamma = 0.5 * Rho * Vinf_eff * Chord * Cl
+                double chord = geom.chordShedding[i];                      // 获取当前节段的弦长
+                double gamma_required = 0.5 * Vinf_eff * chord * cl_value; // 考虑密度
+
+                int boundLineIdx = currentBladeWake.boundLineIndices[i];
+                VortexLine &boundLine = currentBladeWake.lines[boundLineIdx]; // 获取对线段的引用以便修改其 gamma
+
+                // 使用松弛因子更新附着涡强度
+                double gamma_current = boundLine.gamma;
+                double dg = gamma_required - gamma_current;
+                boundLine.gamma = gamma_current + relaxationFactor * dg;
+
+                // 存储本迭代计算出的新的 Bound Gamma，用于后续更新 Trailing/Shed
+                if (i < updatedBoundGammas[b].size())
+                {
+                    updatedBoundGammas[b][i] = boundLine.gamma;
+                }
+                else
+                {
+                    std::cerr << "Error: updatedBoundGammas out of bounds for segment " << i << " on blade " << b << " at timestep " << currentTimestep << std::endl;
+                }
+
+                // 更新最大 Gamma 变化量，用于收敛判断
+                max_dg = std::max(max_dg, std::abs(dg));
+            } // 结束遍历控制点 (叶片节段)
+
+            // --- 4. 根据更新后的附着涡强度，更新脱落涡 (Trailing) 和分离涡 (Shed) 的强度 ---
+            // 注意：这里使用本迭代计算出的 updatedBoundGammas 来更新 Trailing 和 Shed 涡量。
+            // Shed 涡量需要使用上一时间步的 Bound Gamma (prevGammaBound) 和当前时间步的 Bound Gamma。
+            for (int b = 0; b < wake.nBlades; ++b)
+            {
+                BladeWake &currentBladeWake = wake.getBladeWake(currentTimestep, b);
+                // Update Trailing 涡线 (nTrail 个)
+                // Trailing line i 连接 trailNodeIndices[i] 到 boundNodeIndices[i]
+                // 其强度等于其连接的两个附着点上附着涡的强度差。
+                // Trailing 涡段 i 的强度 = Gamma_Bound[i] - Gamma_Bound[i-1] (对于 i > 0)
+                // Trailing 涡段 0 (翼根) 的强度 = Gamma_Bound[0]
+                // Trailing 涡段 nShed (翼尖) 的强度 = -Gamma_Bound[nShed-1]
+                // 注意索引对应关系：nTrail = nShed + 1
+
+                for (int i = 0; i < wake.nTrail; ++i) // 遍历 nTrail 个 Trailing 涡段 (0 到 nShed)
+                {
+                    // Find the current Trailing vortex line segment using its stored index
+                    if (i < 0 || i >= currentBladeWake.trailingLineIndices.size())
+                    {
+                        std::cerr << "Error: trailingLineIndices out of bounds for segment " << i << " on blade " << b << " at timestep " << currentTimestep << std::endl;
+                        continue;
+                    }
+                    int trailingLineIdx = currentBladeWake.trailingLineIndices[i];
+                    if (trailingLineIdx == -1 || trailingLineIdx >= currentBladeWake.lines.size())
+                    {
+                        std::cerr << "Error: Invalid trailing line index " << trailingLineIdx << " in lines vector for blade " << b << ", segment " << i << " at timestep " << currentTimestep << std::endl;
+                        continue;
+                    }
+                    VortexLine &trailingLine = currentBladeWake.lines[trailingLineIdx];
+
+                    double gamma_trailing = 0.0; // Default value
+
+                    if (i == 0) // 翼根处的 Trailing 涡段
+                    {
+                        // 强度等于第一个附着涡段的强度
+                        if (wake.nShed > 0 && 0 < updatedBoundGammas[b].size())
+                        {
+                            gamma_trailing = updatedBoundGammas[b][0];
+                        }
+                        else if (wake.nShed == 0)
+                        {
+                            // No shed segments, no bound gamma to shed from
+                            gamma_trailing = 0.0;
+                        }
+                        else
+                        {
+                            std::cerr << "Error: Index out of bounds accessing updatedBoundGammas[b][0] for blade " << b << ", segment " << i << ", timestep " << currentTimestep << "." << std::endl;
+                        }
+                    }
+                    else if (i < wake.nShed) // 中间的 Trailing 涡段
+                    {
+                        // 强度等于其连接的两个附着涡段的强度差
+                        if (i < updatedBoundGammas[b].size() && (i - 1) < updatedBoundGammas[b].size())
+                        {
+                            gamma_trailing = updatedBoundGammas[b][i] - updatedBoundGammas[b][i - 1];
+                        }
+                        else
+                        {
+                            std::cerr << "Error: Index out of bounds accessing updatedBoundGammas for blade " << b << ", segment " << i << ", timestep " << currentTimestep << "." << std::endl;
+                        }
+                    }
+                    else if (i == wake.nShed) // 翼尖处的 Trailing 涡段
+                    {
+                        // 强度等于最后一个附着涡段强度的负值
+                        if (wake.nShed > 0 && (wake.nShed - 1) < updatedBoundGammas[b].size())
+                        {
+                            gamma_trailing = -updatedBoundGammas[b][wake.nShed - 1];
+                        }
+                        else if (wake.nShed == 0)
+                        {
+                            // No shed segments
+                            gamma_trailing = 0.0;
+                        }
+                        else
+                        {
+                            std::cerr << "Error: Index out of bounds accessing updatedBoundGammas for blade " << b << ", segment " << i << ", timestep " << currentTimestep << "." << std::endl;
+                        }
+                    }
+                    else
+                    {
+                        std::cerr << "Error: Unexpected index i=" << i << " when updating trailing vortex for blade " << b << ", timestep " << currentTimestep << ". nTrail=" << wake.nTrail << std::endl;
+                    }
+                    trailingLine.gamma = gamma_trailing; // 更新 Trailing 涡线强度
+                }
+
+                // Update Shed 涡线 (nShed 个)
+                // Shed line i 连接 trailNodeIndices[i] 到 trailNodeIndices[i+1]
+                // 其强度等于上一时间步该位置对应的附着涡强度与当前时间步该位置对应的附着涡强度的差。
+                // Shed 涡段 i 的强度 = Gamma_Bound[i] (t=n-1) - Gamma_Bound[i] (t=n)
+                for (int i = 0; i < wake.nShed; ++i) // 遍历 nShed 个 Shed 涡段 (0 到 nShed-1)
+                {
+                    // Find the current Shed vortex line segment using its stored index
+                    if (i < 0 || i >= currentBladeWake.shedLineIndices.size())
+                    {
+                        std::cerr << "Error: shedLineIndices out of bounds for segment " << i << " on blade " << b << " at timestep " << currentTimestep << std::endl;
+                        continue;
+                    }
+                    int shedLineIdx = currentBladeWake.shedLineIndices[i];
+                    if (shedLineIdx == -1 || shedLineIdx >= currentBladeWake.lines.size())
+                    {
+                        std::cerr << "Error: Invalid shed line index " << shedLineIdx << " in lines vector for blade " << b << ", segment " << i << " at timestep " << currentTimestep << std::endl;
+                        continue;
+                    }
+                    VortexLine &shedLine = currentBladeWake.lines[shedLineIdx];
+
+                    // Get previous timestep's bound gamma for this segment (stored in prevGammaBound)
+                    double prev_gamma_bound = 0.0;
+                    if (i < currentBladeWake.prevGammaBound.size())
+                    {
+                        prev_gamma_bound = currentBladeWake.prevGammaBound[i];
+                    }
+                    else
+                    {
+                        std::cerr << "Error: prevGammaBound out of bounds for blade " << b << ", segment " << i << " at timestep " << currentTimestep << ". Using 0 for previous gamma." << std::endl;
+                    }
+
+                    // Get current timestep's bound gamma for this segment (from updatedBoundGammas)
+                    double current_gamma_bound = 0.0;
+                    if (i < updatedBoundGammas[b].size())
+                    {
+                        current_gamma_bound = updatedBoundGammas[b][i];
+                    }
+                    else
+                    {
+                        std::cerr << "Error: updatedBoundGammas out of bounds for blade " << b << ", segment " << i << " at timestep " << currentTimestep << ". Using 0 for current gamma." << std::endl;
+                    }
+
+                    // Calculate Shed vortex line strength
+                    shedLine.gamma = prev_gamma_bound - current_gamma_bound; // Note the sign convention
+
+                } // 结束遍历 Shed 涡段
+            }
+
+            // --- 5. 检查收敛条件 ---
+            if (max_dg < convergenceThreshold)
+            {
+
+                std::cout << "  Kutta-Joukowski iteration converged after " << iter + 1 << " iterations. Max |dGamma| = " << max_dg << std::endl;
+                break; // 收敛，退出迭代循环
+            }
+        }
+
+        // 如果迭代次数达到最大但未收敛，输出警告
+        if (max_dg >= convergenceThreshold)
+        {
+            std::cerr << "Warning: Kutta-Joukowski iteration did not converge after " << maxIterations << " iterations. Max |dGamma| = " << max_dg << std::endl;
+        }
+
+        // Kutta 循环结束后，所有涡线的强度已经更新。
+        // 在主循环中，下一步应该是根据这些新的涡线强度，再次计算所有节点的诱导速度，
+        // 然后更新节点位置，进入下一个时间步。
+    }
+
 } // namespace fvw
-
-// std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
-// {
-//     if (airfoilIdx < 0 || airfoilIdx >= static_cast<int>(airfoils.size()))
-//     {
-//         throw std::invalid_argument("Invalid airfoilIdx");
-//     }
-
-//     double cl = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
-//     double cd = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
-//     return {cl, cd};
-// }
-
-// // 这里的输入的lines应该是只有lifting line 也就是Bound
-// void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
-//                              const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils)
-// {
-
-//     int max_iter_Kutta = 2;
-//     int current_t = 1;
-
-//     double relaxation_factor = 0.3;
-
-//     std::vector<fvw::VortexLine> linesLiftingGamma(wake.nBlades * wake.nShed);
-//     for (size_t i = 0; i < wake.lines[1].size(); ++i)
-//     {
-//         if (wake.lines[1][i].type == fvw::VortexLineType::Bound)
-//         {
-//             linesLiftingGamma.push_back(wake.lines[1][i]);
-//         }
-//     }
-
-//     // 提取出Pos['bound']的值
-//     std::vector<VortexNode> liftingLinesNode(turbineParams.nBlades * turbineParams.nSegments);
-//     for (int b = 0; b < turbineParams.nBlades; ++b)
-//     {
-//         for (int i = 0; i < turbineParams.nSegments; ++i)
-//         {
-
-//             liftingLinesNode.push_back({pos.boundAt(b, 0, i)});
-//         }
-//     }
-
-//     int nShed = turbineParams.nSegments;
-
-//     for (int iter = 0; iter < max_iter_Kutta; ++iter)
-//     {
-//         std::vector<Vec3> vel_uind_ll(liftingLinesNode.size(), Vec3(0.0, 0.0, 0.0));
-//         // 对每一个lifting line上的node，计算所有Line的contribution
-//         // 需要debug: This is not node, it the middle of the line (need to re-define)
-//         // Nodes debug完了，但是wake.nodes[current_t], wake.lines[current_t]的构造似乎有问题，导致了段错误，需要进一步debug
-//         computeInducedVelocity(vel_uind_ll, liftingLinesNode, wake.nodes[current_t], wake.lines[current_t], turbineParams);
-
-//         // 坐标转化
-//         std::vector<Vec3> vel_tot(liftingLinesNode.size());
-//         std::vector<double> Vinf(liftingLinesNode.size());
-//         std::vector<int> NFoil(liftingLinesNode.size());
-//         std::vector<double> chord(liftingLinesNode.size());
-
-//         int node_idx_counter = 0;
-
-//         // 伪代码
-//         // 对于lifting line计算出induced velocity后
-//         // 需要把该Induced velocity从惯性坐标系转换到叶片坐标系
-//         // （目前的问题：如果用bxnAt等更新，vel_uind_ll是三个叶片都放在一起的，而axes.bxnAt是分叶片和时间的，无法一一对应地调用）
-//         // 目前尝试根据Idx调用
-//         // 再在叶片坐标系的基础上加上vel_blade，得到叶片坐标系的总速度
-//         for (int b = 0; b < turbineParams.nBlades; ++b)
-//         {
-//             for (int i = 0; i < nShed; ++i)
-//             {
-//                 Vec3 uind = vel_uind_ll[node_idx_counter];
-//                 vel_tot[node_idx_counter].x = velBCS.at(b, current_t, i).x + axes.bxtAt(b, current_t, i).dot(uind);
-//                 vel_tot[node_idx_counter].y = velBCS.at(b, current_t, i).y + axes.bytAt(b, current_t, i).dot(uind);
-//                 vel_tot[node_idx_counter].z = velBCS.at(b, current_t, i).z + axes.bztAt(b, current_t, i).dot(uind);
-//                 Vinf[node_idx_counter] = vel_tot[node_idx_counter].x * vel_tot[node_idx_counter].x + vel_tot[node_idx_counter].y * vel_tot[node_idx_counter].y + vel_tot[node_idx_counter].z * vel_tot[node_idx_counter].z;
-//                 NFoil[node_idx_counter] = geom.airfoilIndex[i];
-//                 chord[node_idx_counter] = geom.chordShedding[i];
-//                 node_idx_counter++;
-//             }
-//         }
-
-//         std::vector<double> aoa(liftingLinesNode.size());
-//         std::vector<double> cl(liftingLinesNode.size());
-//         std::vector<double> cd(liftingLinesNode.size());
-//         std::vector<double> gamma_new(liftingLinesNode.size());
-//         std::vector<double> dg(liftingLinesNode.size());
-//         double max_dg = 0.0;
-
-//         for (int i = 0; i < liftingLinesNode.size(); i++)
-//         {
-//             // 然后使用arctan计算出攻角
-//             aoa[i] = std::atan2(-vel_tot[i].y, vel_tot[i].x) * 180.0 / M_PI;
-
-//             // 在图表中插值提取出cl和cd
-//             auto [cl_value, cd_value] = interpolateClCd(NFoil[i], aoa[i], airfoils);
-//             cl[i] = cl_value;
-//             cd[i] = cd_value;
-
-//             // 计算bound vorticity
-//             // 公式: 0.5*Vinf*chord*cl
-//             gamma_new[i] = 0.5 * Vinf[i] * chord[i] * cl[i];
-//             dg[i] = gamma_new[i] - linesLiftingGamma[i].gamma;
-
-//             // 使用relaxation_factor更新bound vortex
-//             linesLiftingGamma[i].gamma = linesLiftingGamma[i].gamma + relaxation_factor * dg[i];
-//             max_dg = std::max(max_dg, std::abs(dg[i]));
-//         }
-
-//         // 更新trailing vortex和shed vortex，这里又涉及到一个问题就是，trail和shed要针对不同的blade计算。
-//         // 我觉得为了更好分析，是不是还是应该分成不同blade的？
-
-//         // 判断bound vortex的error是否小于tol_kutta,如果是就可以跳出循环
-
-//         // 预期返回值: bound, trail, shed vorticity 和 perf中cl, cd, aoa
-//     }
-// }
-
-// } // namespace fvw

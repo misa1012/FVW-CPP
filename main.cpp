@@ -96,9 +96,8 @@ int main(int argc, char *argv[])
     // t = 0
     InitializeWake(wake, geom, perf, turbineParams, pos, simParams.dt);
 
-    // 现在line的位置初始化好了，应该更新gamma，这是需要循环更新
-    // 这个需要pos['bound']的位置
-    // kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
+    // 使用kutta初始化vortex strength
+    kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
     // // Update wake and compute induced velocity (示例循环)
     // for (int t = 1; t < simParams.timesteps; ++t)
