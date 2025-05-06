@@ -39,16 +39,16 @@ namespace fvw
     // --- 单个叶片在一个时间步的尾迹信息 ---
     struct BladeWake
     {
-        std::vector<VortexNode> nodes;      // 该叶片在该时间步的所有尾迹节点 (包括叶片上的附着涡节点)
-        std::vector<VortexLine> lines;      // 连接该叶片内部节点的涡线段
-        
-        std::vector<int> boundNodeIndices;  // t=n 时刻的附着涡节点索引 (nTrail)
-        std::vector<int> trailNodeIndices;  // t=n 时刻的尾迹节点索引 (nTrail)
+        std::vector<VortexNode> nodes; // 该叶片在该时间步的所有尾迹节点 (包括叶片上的附着涡节点)
+        std::vector<VortexLine> lines; // 连接该叶片内部节点的涡线段
+
+        std::vector<int> boundNodeIndices; // t=n 时刻的附着涡节点索引 (nTrail)
+        std::vector<int> trailNodeIndices; // t=n 时刻的尾迹节点索引 (nTrail)
 
         std::vector<double> prevGammaBound; // 存储 t=n-1 的 Bound 涡量强度
 
         // 存储不同类型涡线在 lines 向量中的索引，方便快速访问
-        std::vector<int> boundLineIndices;   // Size nShed
+        std::vector<int> boundLineIndices;    // Size nShed
         std::vector<int> trailingLineIndices; // Size nTrail
         std::vector<int> shedLineIndices;     // Size nShed
 
@@ -114,13 +114,7 @@ namespace fvw
             }
         }
 
-        // 添加一个新的空时间步结构 (用于下一个时间步的初始化)
-        // void addTimeStepStructure()
-        // {
-        //     bladeWakes.emplace_back(nBlades); // 添加 nBlades 个空的 BladeWake
-        // }
-
-        // 获取特定叶片在特定时间步的尾迹数据 (非 const 版本)
+        // 获取特定叶片在特定时间步的尾迹数据 (非 const 版本)s
         BladeWake &getBladeWake(int timestep, int blade)
         {
             if (timestep >= bladeWakes.size() || blade < 0 || blade >= nBlades)
@@ -179,10 +173,13 @@ namespace fvw
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
                                 const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.001);
 
-    void InitializeWake(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
-                        const TurbineParams &turbineParams, const PositionData &pos, double dt);
+    void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
+                                 const TurbineParams &turbineParams, const PositionData &pos, double dt);
 
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep);
+
+    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
+                              const TurbineParams &turbineParams, const PositionData &pos, double dt, int currentTimestep);
 
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,

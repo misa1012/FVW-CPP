@@ -184,7 +184,7 @@ namespace fvw
     }
 
     // ------------------------
-
+    // 该函数主要是在调用Biot-savart law，根据gamma计算每个点的速度
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep)
     {
         // 计算诱导速度，叠加到节点速度
@@ -408,19 +408,6 @@ namespace fvw
     }
 
     // --------------------------------
-    // This is the main function of initializing the wake
-    void InitializeWake(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
-                        const TurbineParams &turbineParams, const PositionData &pos, double dt)
-    {
-        // t=0
-        InitializeWakeStructure(wake, geom, perf, turbineParams, pos, dt);
-
-        // --- 初始化 t=1 ---
-        std::cout << "Preparing structure for t=1..." << std::endl;
-        AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, dt, 1);
-    }
-
-    // --------------------------------
     std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
     {
         if (airfoilIdx < 0 || airfoilIdx >= static_cast<int>(airfoils.size()))
@@ -507,7 +494,7 @@ namespace fvw
             computeInducedVelocity(inducedVelocities, controlPointPositions, wake, currentTimestep, turbineParams);
 
             // --- 3. 计算有效速度，攻角，所需的附着涡强度，并更新附着涡 ---
-            
+
             // 存储本迭代计算出的新的附着涡强度，用于后续更新 Trailing 和 Shed 涡线
             std::vector<std::vector<double>> updatedBoundGammas(wake.nBlades, std::vector<double>(wake.nShed));
 
