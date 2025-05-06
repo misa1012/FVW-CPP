@@ -40,8 +40,21 @@ namespace fvw
     // --- 单个叶片在一个时间步的尾迹信息 ---
     struct BladeWake
     {
-        std::vector<VortexNode> nodes; // 该叶片在该时间步的所有尾迹节点 (包括叶片上的附着涡节点)
-        std::vector<VortexLine> lines; // 连接该叶片内部节点的涡线段
+        std::vector<VortexNode> nodes;     // 该叶片在该时间步的所有尾迹节点 (包括叶片上的附着涡节点)
+        std::vector<VortexLine> lines;     // 连接该叶片内部节点的涡线段
+        std::vector<int> boundNodeIndices; // t=n 时刻的附着涡节点索引 (nTrail)
+        std::vector<int> trailNodeIndices; // t=n 时刻的尾迹节点索引 (nTrail)
+        std::vector<double> prevGammaBound; // 存储 t=n-1 的 Bound 涡量强度
+
+        // 构造函数
+        BladeWake(int nTrail)
+        {
+            boundNodeIndices.resize(nTrail, -1);
+            trailNodeIndices.resize(nTrail, -1);
+            nodes.reserve(3 * nTrail);                    // 2*nTrail (对流) + nTrail (新附着涡)
+            lines.reserve(3 * (nTrail - 1) + 2 * nTrail); // Bound + Trailing + Shed
+            prevGammaBound.resize(nTrail - 1, 0.0); // nShed = nTrail - 1
+        }
 
         // 可以在这里添加辅助函数，例如添加节点/线段并返回索引
         int addNode(const VortexNode &node)
@@ -76,7 +89,6 @@ namespace fvw
             : nBlades(nBlades_), nShed(nShed_), nTrail(nTrail_) {}
 
         // --- 辅助函数 ---
-
         // 确保指定时间步的结构存在，如果不存在则创建
         void ensureTimeStepExists(int timestep)
         {
@@ -86,15 +98,15 @@ namespace fvw
             }
             if (bladeWakes[timestep].empty())
             {
-                bladeWakes[timestep].resize(nBlades); // 为该时间步创建 nBlades 个 BladeWake
+                bladeWakes[timestep].resize(nBlades, BladeWake(nTrail)); // 为该时间步创建 nBlades 个 BladeWake
             }
         }
 
         // 添加一个新的空时间步结构 (用于下一个时间步的初始化)
-        void addTimeStepStructure()
-        {
-            bladeWakes.emplace_back(nBlades); // 添加 nBlades 个空的 BladeWake
-        }
+        // void addTimeStepStructure()
+        // {
+        //     bladeWakes.emplace_back(nBlades); // 添加 nBlades 个空的 BladeWake
+        // }
 
         // 获取特定叶片在特定时间步的尾迹数据 (非 const 版本)
         BladeWake &getBladeWake(int timestep, int blade)
@@ -154,16 +166,10 @@ namespace fvw
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
                                 const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.001);
 
-    // void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
-    //                              const TurbineParams &turbineParams, const PositionData &pos, double dt);
-
-    // void InitializeWakeVelocities(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
-    //                               const TurbineParams &turbineParams, const PositionData &pos, double dt);
-
     void InitializeWake(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                         const TurbineParams &turbineParams, const PositionData &pos, double dt);
 
-                        void InitializeWakeVelocities(Wake &wake, const TurbineParams &turbineParams);
+    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep);
 
     // void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
     //                              const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS, std::vector<AirfoilData> &airfoils);

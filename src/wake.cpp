@@ -100,74 +100,67 @@ namespace fvw
         // --- 填充 t=0 时刻的尾迹 ---
         std::cout << "Initializing wake structure at t=0..." << std::endl;
 
-        // 用于存储 t=0 时刻每个叶片上附着涡节点和尾迹节点的内部索引
-        std::vector<std::vector<int>> boundNodeIndices_t0(wake.nBlades, std::vector<int>(wake.nTrail));
-        std::vector<std::vector<int>> trailNodeIndices_t0(wake.nBlades, std::vector<int>(wake.nTrail));
-        // 用于存储 t=0 时刻计算出的附着涡和尾迹涡强度
-        std::vector<std::vector<double>> gamma_bound_t0(wake.nBlades, std::vector<double>(wake.nShed));
-        std::vector<std::vector<double>> gamma_trail_t0(wake.nBlades, std::vector<double>(wake.nTrail));
-
         for (int b = 0; b < wake.nBlades; ++b)
         {
-            BladeWake &currentBladeWake_t0 = wake.getBladeWake(0, b); // 获取 t=0, 叶片 b 的数据结构
+            BladeWake &currentBladeWake = wake.getBladeWake(0, b); // 获取 t=0, 叶片 b 的数据结构
 
             // 1. 添加 t=0 的节点 (叶片上的点 + 初始尾迹点)
             // 通常，FVW模型在叶片上定义节点 (如1/4弦长点)，这些点也作为尾迹的起点
             for (int i = 0; i < wake.nTrail; ++i) // nTrail = nShed + 1
             {
                 // 叶片上的节点 (例如，1/4弦长点，作为附着涡的节点)
-                Vec3 boundPos = pos.quarterAt(b, 0, i);                                                    // 获取 t=0 时刻的位置
-                boundNodeIndices_t0[b][i] = currentBladeWake_t0.addNode({boundPos, initialFreeStreamVel}); // 添加节点并获取索引
+                Vec3 boundPos = pos.quarterAt(b, 0, i);                                                            // 获取 t=0 时刻的位置
+                currentBladeWake.boundNodeIndices[i] = currentBladeWake.addNode({boundPos, initialFreeStreamVel}); // 添加节点并获取索引
 
                 // 初始尾迹节点 (例如，后缘点，紧随叶片之后)
-                // 简单处理：初始尾迹点与叶片后缘重合，或稍微向下游移动一点点
                 // 这里用 trailAt，假设它代表后缘位置
                 Vec3 trailPos = pos.trailAt(b, 0, i);
-                // 或者稍微向下游移动: trailPos = pos.trailAt(b, 0, i) + initialFreeStreamVel * dt * 0.01; // 极小位移
-                trailNodeIndices_t0[b][i] = currentBladeWake_t0.addNode({trailPos, initialFreeStreamVel}); // 添加节点并获取索引
+                currentBladeWake.trailNodeIndices[i] = currentBladeWake.addNode({trailPos, initialFreeStreamVel}); // 添加节点并获取索引
             }
 
             // 2. 计算 t=0 的涡线强度 (基于初始 BEM 结果)
+            std::vector<double> gamma_bound(wake.nShed);
+            std::vector<double> gamma_trail(wake.nTrail);
+
             for (int i = 0; i < wake.nShed; ++i) // 附着涡段数
             {
                 // 使用 Perf 中 t=0 的 Cl 值
                 double cl = perf.clAt(b, 0, i);
                 double chord = geom.chordShedding[i]; // 使用控制点/涡段对应的弦长
-                gamma_bound_t0[b][i] = 0.5 * turbineParams.windSpeed * chord * cl;
+                gamma_bound[i] = 0.5 * turbineParams.windSpeed * chord * cl;
             }
 
             // 计算初始尾迹涡强度
-            gamma_trail_t0[b][0] = gamma_bound_t0[b][0]; // 翼根处
+            gamma_trail[0] = gamma_bound[0]; // 翼根处
             for (int i = 1; i < wake.nShed; ++i)
             {
-                gamma_trail_t0[b][i] = gamma_bound_t0[b][i] - gamma_bound_t0[b][i - 1];
+                gamma_trail[i] = gamma_bound[i] - gamma_bound[i - 1];
             }
-            gamma_trail_t0[b][wake.nShed] = -gamma_bound_t0[b][wake.nShed - 1]; // 翼尖处
+            gamma_trail[wake.nShed] = -gamma_bound[wake.nShed - 1]; // 翼尖处
 
             // 3. 添加 t=0 的涡线
             // 添加附着涡线 (Bound)
             for (int i = 0; i < wake.nShed; ++i)
             {
-                int startIdx = boundNodeIndices_t0[b][i];
-                int endIdx = boundNodeIndices_t0[b][i + 1];
-                currentBladeWake_t0.addLine({startIdx, endIdx, gamma_bound_t0[b][i], VortexLineType::Bound});
+                int startIdx = currentBladeWake.boundNodeIndices[i];
+                int endIdx = currentBladeWake.boundNodeIndices[i + 1];
+                currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
             }
 
             // 添加初始尾迹涡线 (Trailing) - 连接叶片和第一层尾迹节点
             for (int i = 0; i < wake.nTrail; ++i)
             {
-                int startIdx = trailNodeIndices_t0[b][i]; // 从尾迹点开始
-                int endIdx = boundNodeIndices_t0[b][i];   // 指向叶片点
-                currentBladeWake_t0.addLine({startIdx, endIdx, gamma_trail_t0[b][i], VortexLineType::Trailing});
+                int startIdx = currentBladeWake.trailNodeIndices[i];
+                int endIdx = currentBladeWake.boundNodeIndices[i];
+                currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
             }
 
             // 添加初始脱落涡线 (Shed) - 连接相邻的初始尾迹节点
             for (int i = 0; i < wake.nShed; ++i)
             {
-                int startIdx = trailNodeIndices_t0[b][i];
-                int endIdx = trailNodeIndices_t0[b][i + 1];
-                // Shed 涡的强度通常与附着涡相同，方向相反 (保证环量守恒)
-                currentBladeWake_t0.addLine({startIdx, endIdx, -gamma_bound_t0[b][i], VortexLineType::Shed});
+                int startIdx = currentBladeWake.trailNodeIndices[i];
+                int endIdx = currentBladeWake.trailNodeIndices[i + 1];
+                currentBladeWake.addLine({startIdx, endIdx, -gamma_bound[i], VortexLineType::Shed});
             }
         }
 
@@ -182,59 +175,16 @@ namespace fvw
             }
         }
 
-        InitializeWakeVelocities(wake, turbineParams);
-
-        // --- 准备 t=1 的结构 ---
-        std::cout << "Preparing structure for t=1..." << std::endl;
-        // 用于存储 t=1 时刻叶片上新节点的内部索引
-        std::vector<std::vector<int>> boundNodeIndices_t1(wake.nBlades, std::vector<int>(wake.nTrail));
-
-        // 用于存储 t=0 节点对流到 t=1 后的新索引
-        std::vector<std::vector<int>> convectedBoundNodeIndices_t1(wake.nBlades, std::vector<int>(wake.nTrail));
-        std::vector<std::vector<int>> convectedTrailNodeIndices_t1(wake.nBlades, std::vector<int>(wake.nTrail));
-
-        for (int b = 0; b < wake.nBlades; ++b)
-        {
-            BladeWake &currentBladeWake_t1 = wake.getBladeWake(1, b);       // 获取 t=1, 叶片 b 的数据结构
-            const BladeWake &currentBladeWake_t0 = wake.getBladeWake(0, b); // 获取 t=0 的数据用于对流
-
-            // 1. 对流 t=0 的节点到 t=1
-            for (int i = 0; i < wake.nTrail; ++i)
-            {
-                // 对流附着涡节点 (虽然它在叶片上，但概念上它也产生尾迹)
-                const VortexNode &node_b0 = currentBladeWake_t0.nodes[boundNodeIndices_t0[b][i]];
-                Vec3 newPos_b = node_b0.position + node_b0.velocity * dt;
-                // 添加到 t=1 的节点列表，速度暂时设为自由流 (之后会被重新计算)
-                convectedBoundNodeIndices_t1[b][i] = currentBladeWake_t1.addNode({newPos_b, initialFreeStreamVel});
-
-                // 对流尾迹节点
-                const VortexNode &node_t0 = currentBladeWake_t0.nodes[trailNodeIndices_t0[b][i]];
-                Vec3 newPos_t = node_t0.position + node_t0.velocity * dt;
-                convectedTrailNodeIndices_t1[b][i] = currentBladeWake_t1.addNode({newPos_t, initialFreeStreamVel});
-            }
-
-            // 2. 添加 t=1 时刻叶片上的新节点 (附着涡节点)
-            for (int i = 0; i < wake.nTrail; ++i) {
-                Vec3 boundPos_t1 = pos.quarterAt(b, 1, i); // 获取 t=1 时刻的位置
-                boundNodeIndices_t1[b][i] = currentBladeWake_t1.addNode({boundPos_t1, initialFreeStreamVel});
-           }
-
-            // 3. 添加 t=1 的涡线 (拓扑结构) - Gamma将在Kutta迭代中确定
-            //    此时 Gamma 可以暂时设为 0 或 t=0 的值作为初始猜测
-
-            
-        }
+        // --- 计算 t=0 节点的初始速度 (诱导速度 + 自由流) ---
+        std::cout << "Computing initial velocities for t=0 nodes..." << std::endl;
+        UpdateWakeVelocities(wake, turbineParams, 0);
     }
 
     // ------------------------
 
-    void InitializeWakeVelocities(Wake &wake, const TurbineParams &turbineParams)
+    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep)
     {
-        // 计算诱导速度，叠加到节点速度
-        // --- 计算 t=0 节点的初始速度 (诱导速度 + 自由流) ---
-        std::cout << "Computing initial velocities for t=0 nodes..." << std::endl;
-
-        int timestep = 0;
+        // 计算诱导速度，叠加到节点速度     
         Vec3 initialFreeStreamVel = Vec3(turbineParams.windSpeed, 0.0, 0.0);
 
         // 1. 收集所有节点的位置作为目标点
@@ -277,6 +227,134 @@ namespace fvw
         std::cout << "Node velocities updated for timestep " << timestep << "." << std::endl;
     }
 
+    // 把wake向前convect一步
+    // 
+    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
+                              const TurbineParams &turbineParams, const PositionData &pos,
+                              double dt, int currentTimestep)
+    {
+        // 确保 t=n 存在
+        wake.ensureTimeStepExists(currentTimestep);
+
+        Vec3 initialFreeStreamVel = Vec3(turbineParams.windSpeed, 0.0, 0.0);
+
+        // 更新每个叶片的尾迹
+        for (int b = 0; b < wake.nBlades; ++b)
+        {
+            BladeWake &currentBladeWake = wake.getBladeWake(currentTimestep, b);
+            const BladeWake &prevBladeWake = wake.getBladeWake(currentTimestep - 1, b);
+
+            // 0. 存储 t=n-1 的 Bound 涡量强度
+            // Question：这一步会不会特别耗时？可能需要优化
+            currentBladeWake.prevGammaBound.assign(wake.nShed, 0.0);
+            for (const auto &line : prevBladeWake.lines)
+            {
+                if (line.type == VortexLineType::Bound)
+                {
+                    for (int i = 0; i < wake.nShed; ++i)
+                    {
+                        if (line.startNodeIdx == prevBladeWake.boundNodeIndices[i] &&
+                            line.endNodeIdx == prevBladeWake.boundNodeIndices[i + 1])
+                        {
+                            currentBladeWake.prevGammaBound[i] = line.gamma;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            // 1. 对流 t=n-1 的所有节点到 t=n
+            currentBladeWake.nodes.clear();
+            currentBladeWake.lines.clear();
+            currentBladeWake.boundNodeIndices.resize(wake.nTrail, -1);
+            currentBladeWake.trailNodeIndices.resize(wake.nTrail, -1);
+
+            // 对流节点：保持 t=n-1 的索引顺序
+            // 对流所有涡点 (这个需要调整一下,是对流所有的涡点)
+            std::vector<int> oldToNewIdx(prevBladeWake.nodes.size(), -1);
+            for (size_t i = 0; i < prevBladeWake.nodes.size(); ++i)
+            {
+                const VortexNode &node = prevBladeWake.nodes[i];
+                Vec3 newPos = node.position + node.velocity * dt;
+                int newIdx = currentBladeWake.addNode({newPos, initialFreeStreamVel});
+                oldToNewIdx[i] = newIdx;
+
+                // 更新 trailNodeIndices
+                for (int j = 0; j < wake.nTrail; ++j)
+                {
+                    // 原来的bound vortex变成现在的trail
+                    if (i == prevBladeWake.boundNodeIndices[j])
+                    {
+                        currentBladeWake.trailNodeIndices[j] = newIdx;
+                    }
+                }
+            }
+
+            // 2. 添加 t=n 的新附着涡节点
+            std::vector<int> newBoundNodeIndices(wake.nTrail);
+            for (int i = 0; i < wake.nTrail; ++i)
+            {
+                Vec3 boundPos = pos.quarterAt(b, currentTimestep, i);
+                newBoundNodeIndices[i] = currentBladeWake.addNode({boundPos, initialFreeStreamVel});
+                currentBladeWake.boundNodeIndices[i] = newBoundNodeIndices[i];
+            }
+
+            // 3. 添加 t=n 的涡量线(拓扑结构) - Gamma将在Kutta迭代中确定
+            // 复制 t=n-1 的 Trailing 和 Shed 涡量线，更新索引
+            for (const auto &line : prevBladeWake.lines)
+            {
+                if (line.type == VortexLineType::Trailing || line.type == VortexLineType::Shed)
+                {
+                    int newStartIdx = oldToNewIdx[line.startNodeIdx];
+                    int newEndIdx = oldToNewIdx[line.endNodeIdx];
+                    if (newStartIdx < 0 || newEndIdx < 0)
+                    {
+                        std::cerr << "Invalid mapped index for line at t=" << currentTimestep << std::endl;
+                        continue;
+                    }
+                    currentBladeWake.addLine({newStartIdx, newEndIdx, line.gamma, line.type});
+                }
+            }
+
+            // 新 Bound 涡量线
+            // 需要改：应该用上一步的bound update -- 已改
+            std::vector<double> gamma_bound(wake.nShed);
+            for (int i = 0; i < wake.nShed; ++i)
+            {
+                int startIdx = newBoundNodeIndices[i];
+                int endIdx = newBoundNodeIndices[i + 1];
+                gamma_bound[i] = currentBladeWake.prevGammaBound[i];
+                currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
+            }
+
+            // 新 Trailing 涡量线
+            std::vector<double> gamma_trail(wake.nTrail);
+            gamma_trail[0] = gamma_bound[0];
+            for (int i = 1; i < wake.nShed; ++i)
+            {
+                gamma_trail[i] = gamma_bound[i] - gamma_bound[i - 1];
+            }
+            gamma_trail[wake.nShed] = -gamma_bound[wake.nShed - 1];
+            for (int i = 0; i < wake.nTrail; ++i)
+            {
+                int startIdx = currentBladeWake.trailNodeIndices[i];
+                int endIdx = newBoundNodeIndices[i]; 
+                currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
+            }
+
+            // 新 Shed 涡量线
+            // 需要改：应该是这一步bound和上一步Bound的差分
+            for (int i = 0; i < wake.nShed; ++i)
+            {
+                int startIdx = currentBladeWake.trailNodeIndices[i];
+                int endIdx = currentBladeWake.trailNodeIndices[i + 1];
+                // 这里不太对，需要改 -- 暂时初始化gamma为0.0，后面在kutta再更新？
+                currentBladeWake.addLine({startIdx, endIdx, 0.0, VortexLineType::Shed});
+            }
+
+            // 接下来就应该调用kutta循环来更新gamma？
+        }
+    }
 
     // --------------------------------
     // This is the main function of initializing the wake
@@ -285,123 +363,13 @@ namespace fvw
     {
         // t=0
         InitializeWakeStructure(wake, geom, perf, turbineParams, pos, dt);
+
+        // --- 初始化 t=1 ---
+        std::cout << "Preparing structure for t=1..." << std::endl;
+        AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, dt, 1);
     }
 
 } // namespace fvw
-
-//     // Update velocity
-//     std::vector<Vec3> inducedVel(nodes.size());
-//     std::vector<Vec3> newTrailPos(nodes.size());
-
-//     computeInducedVelocity(inducedVel, wake.nodes[0], wake.nodes[0], wake.lines[0], turbineParams);
-
-//     for (int i = 0; i < NumNode0; ++i)
-//     {
-//         nodes[i].velocity = nodes[i].velocity + inducedVel[i];
-//         newTrailPos[i] = nodes[i].position + nodes[i].velocity * dt;
-//     }
-
-//     // if (if_verbose)
-//     // {
-//     //     int blade = 0;
-//     //     int timestep = 0;
-//     //     // 输出指定叶片和时间步的诱导速度 x 坐标
-//     //     std::cout << std::fixed << std::setprecision(6);
-//     //     std::cout << "[Induced Velocity] Blade " << blade << ", t=" << timestep
-//     //               << ", inducedVel.x:" << std::endl;
-//     //     for (int i = 0; i < wake.nTrail; ++i)
-//     //     {
-//     //         int controlIdx = controlNodeIdx[blade][i];
-//     //         int trailIdx = trailNodeIdx[blade][i];
-//     //         std::cout << "i=" << std::setw(2) << i
-//     //                   << ", controlNodeIdx=" << std::setw(3) << controlIdx
-//     //                   << ", inducedVel.x=" << std::setw(10) << inducedVel[controlIdx].x << std::endl;
-//     //         std::cout << "i=" << std::setw(2) << i
-//     //                   << ", trailNodeIdx=" << std::setw(3) << trailIdx
-//     //                   << ", inducedVel.x=" << std::setw(10) << inducedVel[trailIdx].x << std::endl;
-//     //     }
-
-//     //     // 输出指定叶片的第一个节点的 velocity
-//     //     int firstNodeIdx = controlNodeIdx[blade][0];
-//     //     std::cout << "First node vel (Blade " << blade << ", t=" << timestep
-//     //               << ")=" << to_string(nodes[firstNodeIdx].velocity) << std::endl;
-//     // }
-
-//     // 第一步对流：使用前向欧拉法更新 trailing vortex 节点
-//     std::cout << "Advancing timestep = 1" << std::endl;
-
-//     wake.nodes.emplace_back(); // 创建 t=1 的节点数组，这之后不能再引用lines了，因为很可能对wake已经重新分配了内存
-//     std::vector<VortexNode> &nodesNext = wake.nodes[1];
-//     int NumNode1 = wake.nBlades * 3 * wake.nTrail;
-//     nodesNext.reserve(NumNode1);
-
-//     for (int i = 0; i < NumNode0; ++i)
-//     {
-//         nodesNext.push_back({newTrailPos[i], initialVel, wake.nodes[0][i].idx});
-//     }
-
-//     // 对于之前的Node：
-//     // Convect all nodes forward in time using Forward Euler
-//     // 对流所有 t=0 节点（绑定和尾迹节点）并添加新绑定节点
-
-//     std::vector<std::vector<int>> newBoundNodeIdx(wake.nBlades, std::vector<int>(wake.nTrail));
-//     for (int b = 0; b < wake.nBlades; ++b)
-//     {
-//         for (int i = 0; i < wake.nTrail; ++i)
-//         {
-//             Vec3 newBoundPosT1 = pos.quarterAt(b, 1, i); // t=1 的 1/4 弦长位置
-//             newBoundNodeIdx[b][i] = node_idx_counter;
-//             nodesNext.push_back({newBoundPosT1, initialVel, node_idx_counter++});
-//         }
-//     }
-
-//     // Update line
-//     wake.lines.emplace_back();
-//     std::vector<VortexLine> &linesNext = wake.lines[1];
-//     int NumLine1 = wake.nBlades * (3 * wake.nShed + 2 * wake.nTrail);
-//     linesNext.reserve(NumLine1);
-
-//     for (int n = 0; n < NumLine0; ++n)
-//     {
-//         if (wake.lines[0][n].type != VortexLineType::Bound)
-//         {
-//             linesNext.push_back(wake.lines[0][n]);
-//         }
-//     }
-
-//     // Update bound vortex
-//     for (int b = 0; b < wake.nBlades; ++b)
-//     {
-//         for (int i = 0; i < wake.nShed; ++i)
-//         {
-//             int startIdx = newBoundNodeIdx[b][i];
-//             int endIdx = newBoundNodeIdx[b][i + 1];
-//             linesNext.push_back({startIdx, endIdx, gamma_bound[b][i], VortexLineType::Bound});
-//         }
-//     }
-
-//     // Update trail vortex
-//     for (int b = 0; b < wake.nBlades; ++b)
-//     {
-//         for (int i = 0; i < wake.nTrail; ++i)
-//         {
-//             int startIdx = boundNodeIdx[b][i];
-//             int endIdx = newBoundNodeIdx[b][i];
-//             linesNext.push_back({startIdx, endIdx, gamma_trail[b][i], VortexLineType::Trailing});
-//         }
-//     }
-
-//     // Update shed vortex
-//     for (int b = 0; b < wake.nBlades; ++b)
-//     {
-//         for (int i = 0; i < wake.nTrail; ++i)
-//         {
-//             int startIdx = boundNodeIdx[b][i];
-//             int endIdx = boundNodeIdx[b][i + 1];
-//             linesNext.push_back({startIdx, endIdx, -1 * gamma_bound[b][i], VortexLineType::NewShed});
-//         }
-//     }
-// }
 
 // std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
 // {
