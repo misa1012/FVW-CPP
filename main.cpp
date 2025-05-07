@@ -5,6 +5,7 @@
 #include "performance.h"
 #include "bem.h"
 #include "wake.h"
+#include "postprocess.h"
 #include <iostream>
 #include <filesystem>
 
@@ -94,7 +95,9 @@ int main(int argc, char *argv[])
     // Initialize the wake for the first timestep
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
     // t=0
-    InitializeWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt);
+    fvw::InitializeWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt);
+    // 写入 t=0 的 VTK 文件
+    fvw::writeWakeToVTK(wake, turbineParams, "./output", 0);
 
     // --- 主时步推进循环 ---
     for (int t = 1; t < simParams.timesteps; ++t)
@@ -103,15 +106,18 @@ int main(int argc, char *argv[])
         // 1. 推进尾迹结构到时间步 t
         // 这将对流 t-1 的节点并添加 t 的新附着节点。
         // 注意：AdvanceWakeStructure 已经确保时间步 t 存在。
-        AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt, t);
+        fvw::AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt, t);
 
         // 2. 对时间步 t 执行 Kutta-Joukowski 迭代
         // 这将更新时间步 t 的附着涡线、脱落涡线和分离涡线的 gamma 值。
-        kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
+        fvw::kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
         // 3. 更新时间步 t 的尾迹节点速度
         // 根据更新后的 gamma 值计算所有节点的总速度（诱导速度 + 自由来流速度）。
-        UpdateWakeVelocities(wake, turbineParams, t);
+        fvw::UpdateWakeVelocities(wake, turbineParams, t);
+
+        // 4. 写入 VTK 文件
+        fvw::writeWakeToVTK(wake, turbineParams, "./output", t);
     }
 
     std::cout << "Wake computation completed." << std::endl;

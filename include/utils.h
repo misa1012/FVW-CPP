@@ -21,6 +21,13 @@ namespace fvw
         {
             return {y * other.z - z * other.y, z * other.x - x * other.z, x * other.y - y * other.x};
         }
+        // 添加 operator< 以支持 std::map
+        bool operator<(const Vec3 &other) const
+        {
+            if (x != other.x) return x < other.x;
+            if (y != other.y) return y < other.y;
+            return z < other.z;
+        }
     };
 
     double interpolate(const std::vector<double> &x, const std::vector<double> &y, double x0);

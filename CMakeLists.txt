@@ -19,6 +19,7 @@ set(SRC_SOURCES
     src/performance.cpp
     src/bem.cpp
     src/wake.cpp
+    src/postprocess.cpp
 )
 
 set(VALIDATION_SOURCES
