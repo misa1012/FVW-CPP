@@ -3,6 +3,7 @@
 
 #include "wake.h"
 #include <string>
+#include <H5Cpp.h>
 
 namespace fvw
 {
@@ -13,6 +14,9 @@ namespace fvw
     void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
                          const TurbineParams &turbineParams, const std::string &outputFile,
                          int timestep);
+
+    void writeConfigToHDF5(const BladeGeometry &geom, const TurbineParams &turbineParams,
+                           const SimParams &simParams, const std::string &outputFile);
 }
 
 #endif // POSTPROCESS_H

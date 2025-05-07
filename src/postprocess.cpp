@@ -5,7 +5,7 @@
 #include <map>
 #include <vector>
 #include <iostream>
-#include <H5Cpp.h>
+
 
 namespace fvw
 {
@@ -110,8 +110,19 @@ namespace fvw
             // 打开或创建 HDF5 文件（追加模式）
             H5::H5File file(outputFile, timestep == 0 ? H5F_ACC_TRUNC : H5F_ACC_RDWR);
 
+            // 创建时间步父组
+            H5::Group timestepsGroup;
+            if (timestep == 0)
+            {
+                timestepsGroup = file.createGroup("/timesteps");
+            }
+            else
+            {
+                timestepsGroup = file.openGroup("/timesteps");
+            }
+
             // 创建时间步组
-            std::string groupName = "/timestep_" + std::to_string(timestep);
+            std::string groupName = "/timesteps/timestep_" + std::to_string(timestep);
             H5::Group timestepGroup = file.createGroup(groupName);
 
             for (int b = 0; b < wake.nBlades; ++b)
@@ -190,6 +201,95 @@ namespace fvw
         catch (const H5::Exception &e)
         {
             std::cerr << "HDF5 error: " << e.getDetailMsg() << std::endl;
+        }
+    }
+
+    void writeConfigToHDF5(const BladeGeometry &geom, const TurbineParams &turbineParams,
+                           const SimParams &simParams, const std::string &outputFile)
+    {
+        try
+        {
+             // 打开或创建 HDF5 文件（覆盖模式）
+             H5::H5File file(outputFile, H5F_ACC_RDWR);
+
+            // 1. 写入几何数据
+            H5::Group geomGroup = file.createGroup("/geometry");
+
+            // 写入 rShedding [nSegments]
+            hsize_t rDims[1] = {geom.rShedding.size()};
+            H5::DataSpace rSpace(1, rDims);
+            H5::DataSet rDataset = geomGroup.createDataSet("r_shed", H5::PredType::NATIVE_DOUBLE, rSpace);
+            rDataset.write(geom.rShedding.data(), H5::PredType::NATIVE_DOUBLE);
+
+            // 写入 chordShedding [nSegments]
+            hsize_t chordDims[1] = {geom.chordShedding.size()};
+            H5::DataSpace chordSpace(1, chordDims);
+            H5::DataSet chordDataset = geomGroup.createDataSet("chord", H5::PredType::NATIVE_DOUBLE, chordSpace);
+            chordDataset.write(geom.chordShedding.data(), H5::PredType::NATIVE_DOUBLE);
+
+            // 写入 twistShedding [nSegments]
+            hsize_t twistDims[1] = {geom.twistShedding.size()};
+            H5::DataSpace twistSpace(1, twistDims);
+            H5::DataSet twistDataset = geomGroup.createDataSet("twist", H5::PredType::NATIVE_DOUBLE, twistSpace);
+            twistDataset.write(geom.twistShedding.data(), H5::PredType::NATIVE_DOUBLE);
+
+            // 写入 airfoil_index [nSegments]
+            hsize_t airfoilDims[1] = {geom.airfoilIndex.size()};
+            H5::DataSpace airfoilSpace(1, airfoilDims);
+            H5::DataSet airfoilDataset = geomGroup.createDataSet("airfoil_index", H5::PredType::NATIVE_INT, airfoilSpace);
+            airfoilDataset.write(geom.airfoilIndex.data(), H5::PredType::NATIVE_INT);
+
+            // 2. 写入仿真参数
+            H5::Group simGroup = file.createGroup("/simulation");
+
+            // 写入标量参数
+            hsize_t scalarDims[1] = {1};
+            H5::DataSpace scalarSpace(1, scalarDims);
+
+            H5::DataSet dtDataset = simGroup.createDataSet("dt", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            dtDataset.write(&simParams.dt, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet totalTimeDataset = simGroup.createDataSet("total_time", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            totalTimeDataset.write(&simParams.totalTime, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet nBladesDataset = simGroup.createDataSet("n_blades", H5::PredType::NATIVE_INT, scalarSpace);
+            int nBlades = turbineParams.nBlades;
+            nBladesDataset.write(&nBlades, H5::PredType::NATIVE_INT);
+
+            H5::DataSet windSpeedDataset = simGroup.createDataSet("wind_speed", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            windSpeedDataset.write(&turbineParams.windSpeed, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet rhoDataset = simGroup.createDataSet("rho", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            rhoDataset.write(&turbineParams.rho, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet rHubDataset = simGroup.createDataSet("r_hub", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            rHubDataset.write(&turbineParams.rHub, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet rTipDataset = simGroup.createDataSet("r_tip", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            rTipDataset.write(&turbineParams.rTip, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet tsrDataset = simGroup.createDataSet("tsr", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            tsrDataset.write(&turbineParams.tsr, H5::PredType::NATIVE_DOUBLE);
+
+            H5::DataSet omegaDataset = simGroup.createDataSet("omega", H5::PredType::NATIVE_DOUBLE, scalarSpace);
+            omegaDataset.write(&turbineParams.omega, H5::PredType::NATIVE_DOUBLE);
+
+            // 写入时间步数组
+            hsize_t timestepsDims[1] = {static_cast<hsize_t>(simParams.timesteps)};
+            H5::DataSpace timestepsSpace(1, timestepsDims);
+            H5::DataSet timestepsDataset = simGroup.createDataSet("timesteps", H5::PredType::NATIVE_INT, timestepsSpace);
+            std::vector<int> timestepsData(simParams.timesteps);
+            for (int i = 0; i < simParams.timesteps; ++i)
+            {
+                timestepsData[i] = i;
+            }
+            timestepsDataset.write(timestepsData.data(), H5::PredType::NATIVE_INT);
+
+            std::cout << "Wrote configuration (geometry and simulation parameters) to HDF5 file" << std::endl;
+        }
+        catch (const H5::Exception &e)
+        {
+            std::cerr << "HDF5 error in writeConfigToHDF5: " << e.getDetailMsg() << std::endl;
         }
     }
 } // namespace fvw

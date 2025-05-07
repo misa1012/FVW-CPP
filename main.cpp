@@ -96,14 +96,20 @@ int main(int argc, char *argv[])
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
     // t=0
     fvw::InitializeWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt);
-    // 写入 t=0 的 VTK 文件
-    fvw::writeWakeToVTK(wake, turbineParams, "../results/output", 0);
-    fvw::writeWakeToHDF5(wake, perf, turbineParams, "../results/wake.h5", 0);
+
+    // timestep=0：写入配置和初始数据
+    {
+        fvw::writeWakeToVTK(wake, turbineParams, "../results/output", 0);
+        fvw::writeWakeToHDF5(wake, perf, turbineParams, "../results/wake.h5", 0);
+        fvw::writeConfigToHDF5(geom, turbineParams, simParams, "../results/wake.h5");
+    }
 
     // --- 主时步推进循环 ---
     for (int t = 1; t < simParams.timesteps; ++t)
     {
-        std::cout << "\n--- Advancing timestep " << t << " ---" << std::endl;
+        std::cout << "\n--- Advancing timestep " << t << "/" << simParams.timesteps - 1
+                  << " (physical time: " << t * simParams.dt << " s) ---" << std::endl;
+
         // 1. 推进尾迹结构到时间步 t
         // 这将对流 t-1 的节点并添加 t 的新附着节点。
         // 注意：AdvanceWakeStructure 已经确保时间步 t 存在。
@@ -122,7 +128,7 @@ int main(int argc, char *argv[])
         fvw::writeWakeToHDF5(wake, perf, turbineParams, "../results/wake.h5", t);
     }
 
-    std::cout << "Wake computation completed." << std::endl;
+    std::cout << "\n[END] Wake computation completed." << std::endl;
 
     return 0;
 }
