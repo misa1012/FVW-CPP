@@ -101,8 +101,9 @@ namespace fvw
         std::cout << "Wrote VTK file: " << filename.str() << std::endl;
     }
 
-    void writeWakeToHDF5(const Wake &wake, const TurbineParams &turbineParams,
-                         const std::string &outputFile, int timestep)
+    void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
+                         const TurbineParams &turbineParams, const std::string &outputFile,
+                         int timestep)
     {
         try
         {
@@ -166,6 +167,22 @@ namespace fvw
 
                     lineDataset.write(&lineData[0], H5::PredType::NATIVE_DOUBLE);
                 }
+
+                // 3. 写入性能数据 (cl, cd, aoa)
+                hsize_t perfDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (cl,cd,aoa)]
+                H5::DataSpace perfSpace(2, perfDims);
+
+                H5::DataSet perfDataset = bladeGroup.createDataSet(
+                    "perf", H5::PredType::NATIVE_DOUBLE, perfSpace);
+
+                std::vector<double> perfData(turbineParams.nSegments * 3);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    perfData[i * 3 + 0] = perf.clAt(b, timestep, i);
+                    perfData[i * 3 + 1] = perf.cdAt(b, timestep, i);
+                    perfData[i * 3 + 2] = perf.aoaAt(b, timestep, i);
+                }
+                perfDataset.write(&perfData[0], H5::PredType::NATIVE_DOUBLE);
             }
 
             std::cout << "Wrote HDF5 data for timestep " << timestep << " to " << outputFile << std::endl;

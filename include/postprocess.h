@@ -10,8 +10,9 @@ namespace fvw
     void writeWakeToVTK(const Wake &wake, const TurbineParams &turbineParams,
                         const std::string &outputDir, int timestep);
 
-    void writeWakeToHDF5(const Wake &wake, const TurbineParams &turbineParams,
-                         const std::string &outputFile, int timestep);
+    void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
+                         const TurbineParams &turbineParams, const std::string &outputFile,
+                         int timestep);
 }
 
 #endif // POSTPROCESS_H
