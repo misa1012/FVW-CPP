@@ -547,6 +547,20 @@ namespace fvw
                     continue;
                 }
                 double cl_value = clcd_values.first;
+                double cd_value = clcd_values.second;
+
+                // 更新 PerformanceData
+                try
+                {
+                    perf.setAoaAt(b, currentTimestep, i) = aoa_deg;
+                    perf.setClAt(b, currentTimestep, i) = cl_value;
+                    perf.setCdAt(b, currentTimestep, i) = cd_value;
+                }
+                catch (const std::out_of_range &e)
+                {
+                    std::cerr << "Error updating PerformanceData for blade " << b << ", timestep " << currentTimestep << ", segment " << i << ": " << e.what() << std::endl;
+                    continue;
+                }
 
                 // 计算维持当前 Cl 所需的附着涡强度 (根据 Kutta-Joukowski 定理)
                 // 公式: Gamma = 0.5 * Rho * Vinf_eff * Chord * Cl
