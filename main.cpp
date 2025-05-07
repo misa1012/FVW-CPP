@@ -97,7 +97,8 @@ int main(int argc, char *argv[])
     // t=0
     fvw::InitializeWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt);
     // 写入 t=0 的 VTK 文件
-    fvw::writeWakeToVTK(wake, turbineParams, "./output", 0);
+    fvw::writeWakeToVTK(wake, turbineParams, "../results/output", 0);
+    fvw::writeWakeToHDF5(wake, turbineParams, "../results/wake.h5", 0);
 
     // --- 主时步推进循环 ---
     for (int t = 1; t < simParams.timesteps; ++t)
@@ -117,7 +118,8 @@ int main(int argc, char *argv[])
         fvw::UpdateWakeVelocities(wake, turbineParams, t);
 
         // 4. 写入 VTK 文件
-        fvw::writeWakeToVTK(wake, turbineParams, "./output", t);
+        fvw::writeWakeToVTK(wake, turbineParams, "../results/output", t);
+        fvw::writeWakeToHDF5(wake, turbineParams, "../results/wake.h5", t);
     }
 
     std::cout << "Wake computation completed." << std::endl;
