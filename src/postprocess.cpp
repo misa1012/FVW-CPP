@@ -6,7 +6,6 @@
 #include <vector>
 #include <iostream>
 
-
 namespace fvw
 {
     void writeWakeToVTK(const Wake &wake, const TurbineParams &turbineParams,
@@ -101,7 +100,7 @@ namespace fvw
         std::cout << "Wrote VTK file: " << filename.str() << std::endl;
     }
 
-    void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
+    void writeWakeToHDF5(const Wake &wake, const PositionData &pos, const PerformanceData &perf, VelICS &velICS, VelBCS &velBCS,
                          const TurbineParams &turbineParams, const std::string &outputFile,
                          int timestep)
     {
@@ -110,20 +109,33 @@ namespace fvw
             // 打开或创建 HDF5 文件（追加模式）
             H5::H5File file(outputFile, timestep == 0 ? H5F_ACC_TRUNC : H5F_ACC_RDWR);
 
-            // 创建时间步父组
-            H5::Group timestepsGroup;
+            // 1. 创建 Wake 组
+            H5::Group wakeGroup;
             if (timestep == 0)
             {
-                timestepsGroup = file.createGroup("/timesteps");
+                wakeGroup = file.createGroup("/wake");
             }
             else
             {
-                timestepsGroup = file.openGroup("/timesteps");
+                wakeGroup = file.openGroup("/wake");
             }
 
-            // 创建时间步组
-            std::string groupName = "/timesteps/timestep_" + std::to_string(timestep);
-            H5::Group timestepGroup = file.createGroup(groupName);
+            std::string wakeTimestepName = "/wake/timestep_" + std::to_string(timestep);
+            H5::Group wakeTimestepGroup = wakeGroup.createGroup(wakeTimestepName);
+
+            // 2. 创建 LiftingLine 组
+            H5::Group liftingLineGroup;
+            if (timestep == 0)
+            {
+                liftingLineGroup = file.createGroup("/liftingline");
+            }
+            else
+            {
+                liftingLineGroup = file.openGroup("/liftingline");
+            }
+
+            std::string liftingTimestepName = "/liftingline/timestep_" + std::to_string(timestep);
+            H5::Group liftingTimestepGroup = liftingLineGroup.createGroup(liftingTimestepName);
 
             for (int b = 0; b < wake.nBlades; ++b)
             {
@@ -131,9 +143,13 @@ namespace fvw
                 const auto &nodes = bladeWake.nodes;
                 const auto &lines = bladeWake.lines;
 
-                // 创建叶片组
-                std::string bladeGroupName = groupName + "/blade_" + std::to_string(b);
-                H5::Group bladeGroup = file.createGroup(bladeGroupName);
+                // Wake 叶片组
+                std::string wakeBladeGroupName = wakeTimestepName + "/blade_" + std::to_string(b);
+                H5::Group wakeBladeGroup = wakeTimestepGroup.createGroup(wakeBladeGroupName);
+
+                // LiftingLine 叶片组
+                std::string liftingBladeGroupName = liftingTimestepName + "/blade_" + std::to_string(b);
+                H5::Group liftingBladeGroup = liftingTimestepGroup.createGroup(liftingBladeGroupName);
 
                 // 1. 写入节点数据
                 if (!nodes.empty())
@@ -141,8 +157,7 @@ namespace fvw
                     hsize_t nodeDims[2] = {nodes.size(), 6}; // [nNodes, (x,y,z,u,v,w)]
                     H5::DataSpace nodeSpace(2, nodeDims);
 
-                    H5::DataSet nodeDataset = bladeGroup.createDataSet(
-                        "nodes", H5::PredType::NATIVE_DOUBLE, nodeSpace);
+                    H5::DataSet nodeDataset = wakeBladeGroup.createDataSet("nodes", H5::PredType::NATIVE_DOUBLE, nodeSpace);
 
                     std::vector<double> nodeData(nodes.size() * 6);
                     for (size_t i = 0; i < nodes.size(); ++i)
@@ -164,8 +179,7 @@ namespace fvw
                     hsize_t lineDims[2] = {lines.size(), 4}; // [nLines, (start_idx,end_idx,gamma,type)]
                     H5::DataSpace lineSpace(2, lineDims);
 
-                    H5::DataSet lineDataset = bladeGroup.createDataSet(
-                        "lines", H5::PredType::NATIVE_DOUBLE, lineSpace);
+                    H5::DataSet lineDataset = wakeBladeGroup.createDataSet("lines", H5::PredType::NATIVE_DOUBLE, lineSpace);
 
                     std::vector<double> lineData(lines.size() * 4);
                     for (size_t i = 0; i < lines.size(); ++i)
@@ -183,8 +197,7 @@ namespace fvw
                 hsize_t perfDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (cl,cd,aoa)]
                 H5::DataSpace perfSpace(2, perfDims);
 
-                H5::DataSet perfDataset = bladeGroup.createDataSet(
-                    "perf", H5::PredType::NATIVE_DOUBLE, perfSpace);
+                H5::DataSet perfDataset = liftingBladeGroup.createDataSet("perf", H5::PredType::NATIVE_DOUBLE, perfSpace);
 
                 std::vector<double> perfData(turbineParams.nSegments * 3);
                 for (int i = 0; i < turbineParams.nSegments; ++i)
@@ -194,6 +207,104 @@ namespace fvw
                     perfData[i * 3 + 2] = perf.aoaAt(b, timestep, i);
                 }
                 perfDataset.write(&perfData[0], H5::PredType::NATIVE_DOUBLE);
+
+                // 4. 写入诱导速度数据 (u, v, w)
+                H5::Group inducedVelGroup = liftingBladeGroup.createGroup("induced_velocity");
+
+                hsize_t inducedVelDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (u,v,w)]
+                H5::DataSpace inducedVelSpace(2, inducedVelDims);
+
+                H5::DataSet bcsDataset = inducedVelGroup.createDataSet("BCS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                bcsDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                    .write(H5::StrType(H5::PredType::C_S1, 32), "blade_frame");
+
+                std::vector<double> bcsData(turbineParams.nSegments * 3);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    const Vec3 &velocity = perf.inducedVelocityAt(b, timestep, i);
+                    bcsData[i * 3 + 0] = velocity.x; // u
+                    bcsData[i * 3 + 1] = velocity.y; // v
+                    bcsData[i * 3 + 2] = velocity.z; // w
+                }
+                bcsDataset.write(&bcsData[0], H5::PredType::NATIVE_DOUBLE);
+
+                // ICS (惯性坐标系)
+                H5::DataSet icsDataset = inducedVelGroup.createDataSet("ICS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                icsDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                    .write(H5::StrType(H5::PredType::C_S1, 32), "inertial_frame");
+
+                std::vector<double> icsData(turbineParams.nSegments * 3);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    const Vec3 &velocity = perf.inducedVelocityICSAt(b, timestep, i);
+                    icsData[i * 3 + 0] = velocity.x; // x
+                    icsData[i * 3 + 1] = velocity.y; // y
+                    icsData[i * 3 + 2] = velocity.z; // z
+                }
+                icsDataset.write(&icsData[0], H5::PredType::NATIVE_DOUBLE);
+
+                // 2.3 写入 velBCS 数据
+                H5::Group bladeVelocityGroup = liftingBladeGroup.createGroup("blade_velocity");
+                H5::DataSet velBCSDataset = bladeVelocityGroup.createDataSet("velBCS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                velBCSDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                    .write(H5::StrType(H5::PredType::C_S1, 32), "blade_frame");
+
+                std::vector<double> velBCSData(turbineParams.nSegments * 3);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+
+                    const Vec3 &velocity = velBCS.at(b, timestep, i);
+                    velBCSData[i * 3 + 0] = velocity.x; // x
+                    velBCSData[i * 3 + 1] = velocity.y; // y
+                    velBCSData[i * 3 + 2] = velocity.z; // z
+                }
+                velBCSDataset.write(&velBCSData[0], H5::PredType::NATIVE_DOUBLE);
+
+                H5::DataSet velICSDataset = bladeVelocityGroup.createDataSet("velICS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                velICSDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                    .write(H5::StrType(H5::PredType::C_S1, 32), "inertial_frame");
+
+                std::vector<double> velICSData(turbineParams.nSegments * 3);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+
+                    const Vec3 &velocity = velICS.at(b, timestep, i);
+                    velICSData[i * 3 + 0] = velocity.x; // x
+                    velICSData[i * 3 + 1] = velocity.y; // y
+                    velICSData[i * 3 + 2] = velocity.z; // z
+                }
+                velICSDataset.write(&velICSData[0], H5::PredType::NATIVE_DOUBLE);
+
+                // 2.4 写入 Bound Gamma 数据
+                hsize_t gammaDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 1}; // [nSegments, 1]
+                H5::DataSpace gammaSpace(2, gammaDims);
+                H5::DataSet gammaDataset = liftingBladeGroup.createDataSet("bound_gamma", H5::PredType::NATIVE_DOUBLE, gammaSpace);
+
+                std::vector<double> gammaData(turbineParams.nSegments);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    gammaData[i] = perf.boundGammaAt(b, timestep, i);
+                }
+                gammaDataset.write(&gammaData[0], H5::PredType::NATIVE_DOUBLE);
+
+                // 2.5 写入 pos.boundAt 数据
+                hsize_t posDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, 3] for x, y, z
+                H5::DataSpace posSpace(2, posDims);
+                H5::DataSet posDataset = liftingBladeGroup.createDataSet("pos_bound", H5::PredType::NATIVE_DOUBLE, posSpace);
+
+                // 分配存储位置数据的向量
+                std::vector<double> posData(turbineParams.nSegments * 3); // [nSegments * 3] for x, y, z
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    Vec3 position_bound = pos.boundAt(b, timestep, i); // 获取位置 (x, y, z)
+                    posData[i * 3 + 0] = position_bound.x;                    // x 分量
+                    posData[i * 3 + 1] = position_bound.y;                    // y 分量
+                    posData[i * 3 + 2] = position_bound.z;                    // z 分量
+                    // 调试输出
+                    // std::cout << "pos_bound(b=" << b << ", t=" << timestep << ", i=" << i
+                    //           << "): x=" << position_bound.x << ", y=" << position_bound.y << ", z=" << position_bound.z << std::endl;
+                }
+                posDataset.write(&posData[0], H5::PredType::NATIVE_DOUBLE);
             }
 
             std::cout << "Wrote HDF5 data for timestep " << timestep << " to " << outputFile << std::endl;
@@ -209,17 +320,27 @@ namespace fvw
     {
         try
         {
-             // 打开或创建 HDF5 文件（覆盖模式）
-             H5::H5File file(outputFile, H5F_ACC_RDWR);
+            // 打开或创建 HDF5 文件
+            H5::H5File file;
+            file = H5::H5File(outputFile, H5F_ACC_RDWR);
+
+            // 1. 创建 /config 组
+            H5::Group configGroup = file.createGroup("/config");
 
             // 1. 写入几何数据
-            H5::Group geomGroup = file.createGroup("/geometry");
+            H5::Group geomGroup = configGroup.createGroup("geometry");
 
             // 写入 rShedding [nSegments]
             hsize_t rDims[1] = {geom.rShedding.size()};
             H5::DataSpace rSpace(1, rDims);
             H5::DataSet rDataset = geomGroup.createDataSet("r_shed", H5::PredType::NATIVE_DOUBLE, rSpace);
             rDataset.write(geom.rShedding.data(), H5::PredType::NATIVE_DOUBLE);
+
+            // 写入 rTrail [nSegments]
+            hsize_t rTDims[1] = {geom.rTrailing.size()};
+            H5::DataSpace rTSpace(1, rTDims);
+            H5::DataSet rTDataset = geomGroup.createDataSet("r_trail", H5::PredType::NATIVE_DOUBLE, rTSpace);
+            rTDataset.write(geom.rTrailing.data(), H5::PredType::NATIVE_DOUBLE);
 
             // 写入 chordShedding [nSegments]
             hsize_t chordDims[1] = {geom.chordShedding.size()};
@@ -240,7 +361,7 @@ namespace fvw
             airfoilDataset.write(geom.airfoilIndex.data(), H5::PredType::NATIVE_INT);
 
             // 2. 写入仿真参数
-            H5::Group simGroup = file.createGroup("/simulation");
+            H5::Group simGroup = configGroup.createGroup("simulation");
 
             // 写入标量参数
             hsize_t scalarDims[1] = {1};

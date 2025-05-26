@@ -155,7 +155,7 @@ namespace fvw
                         perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
                         perf.setCdAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
 
-                        if (if_verbose && b == 0 && t == 0 && i == 5)
+                        if (if_verbose && b == 0 && i == 5)
                         {
                             double test_aoa = 10.917758;
                             double cl_test = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, test_aoa);

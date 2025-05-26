@@ -6,3 +6,6 @@ build/
 
 # 忽略草稿和临时文件目录
 99_draft_and_trash/
+
+# 忽略结果文件
+results/

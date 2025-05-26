@@ -10,6 +10,9 @@ namespace fvw
         aoa.resize(nBlades * nTimesteps * nShed);
         cl.resize(nBlades * nTimesteps * nShed);
         cd.resize(nBlades * nTimesteps * nShed);
+        inducedVelocity.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
+        inducedVelocityICS.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
+        boundGamma.resize(nBlades_ * nTimesteps * nShed_, 0.0);
     }
 
     const double &PerformanceData::aoaAt(int b, int t, int i) const
@@ -26,7 +29,6 @@ namespace fvw
     {
         return cd[b * nTimesteps * nShed + t * nShed + i];
     }
-
     double &PerformanceData::setAoaAt(int b, int t, int i)
     {
         return aoa[b * nTimesteps * nShed + t * nShed + i];
@@ -42,25 +44,24 @@ namespace fvw
         return cd[b * nTimesteps * nShed + t * nShed + i];
     }
 
-    // std::vector<double> computeAoA_tan(const PerformanceData &perf, const VelBCS &velBCS)
-    // {
-    //     std::vector<double> aoa(perf.getBlades() * perf.getTimesteps() * perf.getShed());
-    //     for (int b = 0; b < perf.getBlades(); ++b)
-    //     {
-    //         for (int t = 0; t < perf.getTimesteps(); ++t)
-    //         {
-    //             for (int i = 0; i < perf.getShed(); ++i)
-    //             {
-    //                 int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
-    //                 aoa[idx] = std::atan2(-velBCS.at(b, t, i).y, velBCS.at(b, t, i).x) * 180.0 / M_PI;
-    //                 if (std::isnan(aoa[idx]) || std::abs(aoa[idx]) == 180.0)
-    //                 {
-    //                     aoa[idx] = 0.0;
-    //                 }
-    //             }
-    //         }
-    //     }
-    //     return aoa;
-    // }
+    const Vec3 &PerformanceData::inducedVelocityAt(int b, int t, int i) const
+    {
+        return inducedVelocity[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &PerformanceData::setInducedVelocityAt(int b, int t, int i)
+    {
+        return inducedVelocity[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    const Vec3 &PerformanceData::inducedVelocityICSAt(int b, int t, int i) const
+    {
+        return inducedVelocityICS[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &PerformanceData::setInducedVelocityICSAt(int b, int t, int i)
+    {
+        return inducedVelocityICS[b * nTimesteps * nShed + t * nShed + i];
+    }
 
 } // namespace fvw

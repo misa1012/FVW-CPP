@@ -54,20 +54,61 @@ namespace fvw
     Vec3 &NodeAxes::bytAt(int b, int t, int i) { return byt[b * nTimesteps * nTrail + t * nTrail + i]; }
     Vec3 &NodeAxes::bztAt(int b, int t, int i) { return bzt[b * nTimesteps * nTrail + t * nTrail + i]; }
 
+    // static Vec3 ctdiff(const std::vector<Vec3> &pos, const std::vector<double> &times, int t, int nTimesteps)
+    // {
+    //     if (t == 0)
+    //     {
+    //         return (pos[1] - pos[0]) * (1.0 / (times[1] - times[0]));
+    //     }
+    //     else if (t == nTimesteps - 1)
+    //     {
+    //         return (pos[t] - pos[t - 1]) * (1.0 / (times[t] - times[t - 1]));
+    //     }
+    //     else
+    //     {
+    //         return (pos[t + 1] - pos[t - 1]) * (0.5 / (times[t + 1] - times[t - 1]));
+    //     }
+    // }
+
     static Vec3 ctdiff(const std::vector<Vec3> &pos, const std::vector<double> &times, int t, int nTimesteps)
     {
+        // 计算平均时间步长
+        double dt = 0.0;
+        for (int i = 1; i < nTimesteps; ++i)
+        {
+            dt += times[i] - times[i - 1];
+        }
+        dt /= (nTimesteps - 1);
+
+        Vec3 result;
+
         if (t == 0)
         {
-            return (pos[1] - pos[0]) * (1.0 / (times[1] - times[0]));
+            // 前向差分，O(h²): (-pos[t+2] + 4*pos[t+1] - 3*pos[t]) / (2*dt)
+            result = (pos[t + 2] * -1 + pos[t + 1] * 4.0 - pos[t] * 3.0) * (1.0 / (2.0 * dt));
         }
-        else if (t == nTimesteps - 1)
+        else if (t == 1)
         {
-            return (pos[t] - pos[t - 1]) * (1.0 / (times[t] - times[t - 1]));
+            // 中心差分，O(h²): (pos[t+1] - pos[t-1]) / (2*dt)
+            result = (pos[t + 1] - pos[t - 1]) * (1.0 / (2.0 * dt));
+        }
+        else if (t >= 2 && t < nTimesteps - 2)
+        {
+            // 高阶中心差分，O(h⁴): (-pos[t+2] + 8*pos[t+1] - 8*pos[t-1] + pos[t-2]) / (12*dt)
+            result = (pos[t + 2] * -1 + pos[t + 1] * 8.0 - pos[t - 1] * 8.0 + pos[t - 2]) * (1.0 / (12.0 * dt));
+        }
+        else if (t == nTimesteps - 2)
+        {
+            // 中心差分，O(h²): (pos[t+1] - pos[t-1]) / (2*dt)
+            result = (pos[t + 1] - pos[t - 1]) * (1.0 / (2.0 * dt));
         }
         else
-        {
-            return (pos[t + 1] - pos[t - 1]) * (0.5 / (times[t + 1] - times[t - 1]));
+        { // t == nTimesteps - 1
+            // 后向差分，O(h²): (3*pos[t] - 4*pos[t-1] + pos[t-2]) / (2*dt)
+            result = (pos[t] * 3.0 - pos[t - 1] * 4.0 + pos[t - 2]) * (1.0 / (2.0 * dt));
         }
+
+        return result;
     }
 
     void computeVelICS(VelICS &velICS, const PositionData &pos,

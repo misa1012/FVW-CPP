@@ -8,11 +8,15 @@
 #include "postprocess.h"
 #include <iostream>
 #include <filesystem>
+#include <chrono>
 
 #include "validate.h"
 
 int main(int argc, char *argv[])
 {
+    // 总计时开始
+    auto total_start = std::chrono::high_resolution_clock::now();
+
     std::cout << "Current working directory: " << std::filesystem::current_path() << std::endl;
 
     // 解析验证参数
@@ -23,7 +27,7 @@ int main(int argc, char *argv[])
     // Simulation parameters
     fvw::SimParams simParams;
     simParams.dt = 0.06;
-    simParams.totalTime = 1.2;
+    simParams.totalTime = 0.06;
     simParams.timesteps = static_cast<int>(simParams.totalTime / simParams.dt) + 1;
     // Turbine parameters
     fvw::TurbineParams turbineParams;
@@ -43,7 +47,7 @@ int main(int argc, char *argv[])
     // Section 2. Read in airfoil files
     // Call airfoil.h
     // Read airfoils
-    auto airfoils = fvw::readAirfoils("../data/NREL_files/");
+    auto airfoils = fvw::readAirfoils("/home/sa/vortex/FVW-CPP/data/NREL_files/");
     std::cout << "Airfoil profiles read-in completed." << std::endl;
 
     // Section 3. Calculate the initial position
@@ -100,35 +104,48 @@ int main(int argc, char *argv[])
     // timestep=0：写入配置和初始数据
     {
         fvw::writeWakeToVTK(wake, turbineParams, "../results/output", 0);
-        fvw::writeWakeToHDF5(wake, perf, turbineParams, "../results/wake.h5", 0);
+        fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", 0);
         fvw::writeConfigToHDF5(geom, turbineParams, simParams, "../results/wake.h5");
     }
 
     // --- 主时步推进循环 ---
     for (int t = 1; t < simParams.timesteps; ++t)
     {
+        auto step_start = std::chrono::high_resolution_clock::now();
+
         std::cout << "\n--- Advancing timestep " << t << "/" << simParams.timesteps - 1
                   << " (physical time: " << t * simParams.dt << " s) ---" << std::endl;
 
         // 1. 推进尾迹结构到时间步 t
         // 这将对流 t-1 的节点并添加 t 的新附着节点。
         // 注意：AdvanceWakeStructure 已经确保时间步 t 存在。
-        fvw::AdvanceWakeStructure(wake, geom, perf, turbineParams, pos, simParams.dt, t);
+        fvw::AdvanceWakeStructure(wake, geom, turbineParams, pos, simParams.dt, t);
 
         // 2. 对时间步 t 执行 Kutta-Joukowski 迭代
         // 这将更新时间步 t 的附着涡线、脱落涡线和分离涡线的 gamma 值。
         fvw::kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
         // 3. 更新时间步 t 的尾迹节点速度
-        // 根据更新后的 gamma 值计算所有节点的总速度（诱导速度 + 自由来流速度）。
+        // 根据更新后的 gamma 值计算所有节点的总速度（诱导速度 + 自由来流速度）
         fvw::UpdateWakeVelocities(wake, turbineParams, t);
 
         // 4. 写入 VTK 文件
         fvw::writeWakeToVTK(wake, turbineParams, "../results/output", t);
-        fvw::writeWakeToHDF5(wake, perf, turbineParams, "../results/wake.h5", t);
+        fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", t);
+
+        auto step_end = std::chrono::high_resolution_clock::now();
+        auto step_duration = std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_start);
+        std::cout << "[Timing] Timestep " << t << ": "
+                  << step_duration.count() / 1e6 << " s" << std::endl;
     }
 
     std::cout << "\n[END] Wake computation completed." << std::endl;
+
+    // 总计时结束
+    auto total_end = std::chrono::high_resolution_clock::now();
+    auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start);
+    std::cout << "[Timing] Total time: "
+              << total_duration.count() / 1e6 << " s" << std::endl;
 
     return 0;
 }

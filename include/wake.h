@@ -178,7 +178,7 @@ namespace fvw
 
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep);
 
-    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
+    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom, 
                               const TurbineParams &turbineParams, const PositionData &pos, double dt, int currentTimestep);
 
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,

@@ -2,6 +2,7 @@
 #define POSTPROCESS_H
 
 #include "wake.h"
+#include "position.h"
 #include <string>
 #include <H5Cpp.h>
 
@@ -11,7 +12,8 @@ namespace fvw
     void writeWakeToVTK(const Wake &wake, const TurbineParams &turbineParams,
                         const std::string &outputDir, int timestep);
 
-    void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
+    // 把wake相关的信息写入hdf5
+    void writeWakeToHDF5(const Wake &wake, const PositionData &pos, const PerformanceData &perf, VelICS &velICS, VelBCS &velBCS,
                          const TurbineParams &turbineParams, const std::string &outputFile,
                          int timestep);
 
