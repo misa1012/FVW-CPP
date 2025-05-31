@@ -23,43 +23,6 @@ namespace fvw
                                              -2.319, -1.526, -0.863, -0.370, -0.106, -0.106 / 2};
         std::vector<int> originalNFoil = {0, 0, 0, 1, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7, 7, 7, 7, 7, 7};
 
-        // Interpolation functions
-        auto interpolateDouble = [](const std::vector<double> &x, const std::vector<double> &y, double xq)
-        {
-            if (xq <= x.front())
-                return y.front();
-            if (xq >= x.back())
-                return y.back();
-            for (size_t i = 1; i < x.size(); ++i)
-            {
-                if (xq <= x[i])
-                {
-                    double t = (xq - x[i - 1]) / (x[i] - x[i - 1]);
-                    return y[i - 1] + t * (y[i] - y[i - 1]);
-                }
-            }
-            return y.back();
-        };
-
-        auto interpolateInt = [](const std::vector<double> &x, const std::vector<int> &y, double xq)
-        {
-            if (xq <= x.front())
-                return y.front();
-            if (xq >= x.back())
-                return y.back();
-            for (size_t i = 1; i < x.size(); ++i)
-            {
-                if (xq <= x[i])
-                {
-                    // 比较 xq 到 x[i-1] 和 x[i] 的距离
-                    double dist_prev = std::abs(xq - x[i - 1]);
-                    double dist_curr = std::abs(xq - x[i]);
-                    return (dist_prev <= dist_curr) ? y[i - 1] : y[i];
-                }
-            }
-            return y.back();
-        };
-
         // Cosine distribution for trailing nodes
         geom.rTrailing.resize(nTrail);
         geom.chordTrailing.resize(nTrail);
@@ -69,8 +32,8 @@ namespace fvw
         {
             theta[i] = M_PI * i / (nTrail - 1);
             geom.rTrailing[i] = params.rHub + (params.rTip - params.rHub) * (1 - std::cos(theta[i])) / 2;
-            geom.chordTrailing[i] = interpolateDouble(originalR, originalChord, geom.rTrailing[i]);
-            geom.twistTrailing[i] = interpolateDouble(originalR, originalTwist, geom.rTrailing[i]);
+            geom.chordTrailing[i] = interpolate(originalR, originalChord, geom.rTrailing[i]);
+            geom.twistTrailing[i] = interpolate(originalR, originalTwist, geom.rTrailing[i]);
         }
 
         // Shedding nodes
@@ -81,8 +44,8 @@ namespace fvw
         for (int i = 0; i < nShed; ++i)
         {
             geom.rShedding[i] = (geom.rTrailing[i] + geom.rTrailing[i + 1]) / 2;
-            geom.chordShedding[i] = interpolateDouble(geom.rTrailing, geom.chordTrailing, geom.rShedding[i]);
-            geom.twistShedding[i] = interpolateDouble(geom.rTrailing, geom.twistTrailing, geom.rShedding[i]);
+            geom.chordShedding[i] = interpolate(geom.rTrailing, geom.chordTrailing, geom.rShedding[i]);
+            geom.twistShedding[i] = interpolate(geom.rTrailing, geom.twistTrailing, geom.rShedding[i]);
             geom.airfoilIndex[i] = interpolateInt(originalR, originalNFoil, geom.rShedding[i]);
         }
 

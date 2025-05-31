@@ -392,20 +392,7 @@ namespace fvw
 
         std::cout << "Wake structure advanced to timestep " << currentTimestep << "." << std::endl;
     }
-
-    // --------------------------------
-    std::pair<double, double> interpolateClCd(int airfoilIdx, double aoa, std::vector<AirfoilData> &airfoils)
-    {
-        if (airfoilIdx < 0 || airfoilIdx >= static_cast<int>(airfoils.size()))
-        {
-            throw std::invalid_argument("Invalid airfoilIdx");
-        }
-
-        double cl = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
-        double cd = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
-        return {cl, cd};
-    }
-
+    
     // Kutta循环 update vortex strength
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,
@@ -523,20 +510,8 @@ namespace fvw
 
                 // 获取对应节段的翼型数据索引
                 int airfoilIdx = geom.airfoilIndex[i];
-                // 插值获取升力系数 Cl
-                std::pair<double, double> clcd_values;
-                try
-                {
-                    clcd_values = interpolateClCd(airfoilIdx, aoa_deg, airfoils);
-                }
-                catch (const std::exception &e)
-                {
-                    std::cerr << "Error interpolating airfoil data for blade " << b << ", segment " << i << ", timestep " << currentTimestep << ": " << e.what() << ". Setting gamma to 0." << std::endl;
-                    updatedBoundGammas[b][i] = 0.0;
-                    continue;
-                }
-                double cl_value = clcd_values.first;
-                double cd_value = clcd_values.second;
+                double cl_value = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa_deg);
+                double cd_value = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa_deg);
 
                 // 更新 PerformanceData
                 perf.setAoaAt(b, currentTimestep, i) = aoa_deg;

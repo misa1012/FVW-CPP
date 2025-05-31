@@ -31,6 +31,7 @@ namespace fvw
     };
 
     double interpolate(const std::vector<double> &x, const std::vector<double> &y, double x0);
+    int interpolateInt(const std::vector<double> &x, const std::vector<int> &y, double xq);
 
     // Output
     std::string to_string(const Vec3& v);

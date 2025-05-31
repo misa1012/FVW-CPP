@@ -129,10 +129,6 @@ namespace fvw
                         double phi = std::atan2(windSpeed * (1.0 - a[idx]), omega * r * (1.0 + ap[idx]));
                         // 计算迎角
                         double aoa = (phi - twist) * 180.0 / M_PI;
-                        // if (std::isnan(aoa) || std::abs(aoa) == 180.0)
-                        // {
-                        //     aoa = 0.0;
-                        // }
 
                         if (std::isnan(aoa) || std::abs(aoa) == 180.0)
                         {
@@ -154,15 +150,6 @@ namespace fvw
                         int airfoilIdx = geom.airfoilIndex[i];
                         perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
                         perf.setCdAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
-
-                        if (if_verbose && b == 0 && i == 5)
-                        {
-                            double test_aoa = 10.917758;
-                            double cl_test = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, test_aoa);
-                            double cd_test = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, test_aoa);
-                            std::cout << "[Interp test] i=5, airfoilIdx=" << airfoilIdx
-                                      << ", aoa=" << test_aoa << ", cl=" << cl_test << ", cd=" << cd_test << std::endl;
-                        }
 
                         double cl = perf.clAt(b, t, i);
                         double cd = perf.cdAt(b, t, i);

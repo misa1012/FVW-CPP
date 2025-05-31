@@ -27,7 +27,7 @@ int main(int argc, char *argv[])
     // Simulation parameters
     fvw::SimParams simParams;
     simParams.dt = 0.06;
-    simParams.totalTime = 0.06;
+    simParams.totalTime = 0.18;
     simParams.timesteps = static_cast<int>(simParams.totalTime / simParams.dt) + 1;
     // Turbine parameters
     fvw::TurbineParams turbineParams;
