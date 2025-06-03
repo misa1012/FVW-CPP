@@ -42,6 +42,23 @@ add_executable(fvw_cpp ${SRC_SOURCES} ${VALIDATION_SOURCES})
 # Link HDF5 libraries
 target_link_libraries(fvw_cpp ${HDF5_CXX_LIBRARIES})
 
+# New executable for compute_induced_velocity
+add_executable(compute_induced_velocity
+    compute_induced_velocity.cpp
+    src/utils.cpp
+    src/airfoil.cpp
+    src/geometry.cpp
+    src/position.cpp
+    src/velocity.cpp
+    src/performance.cpp
+    src/bem.cpp
+    src/wake.cpp
+    src/postprocess.cpp
+)
+
+# Link HDF5 libraries for compute_induced_velocity
+target_link_libraries(compute_induced_velocity PRIVATE ${HDF5_CXX_LIBRARIES})
+
 # Compiler flags
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|MSVC")
     add_compile_options(-Wall -Wextra)
