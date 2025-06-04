@@ -12,7 +12,8 @@ namespace fvw
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
                                 const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff)
     {
-        inducedVelocities.assign(targetPoints.size(), Vec3(0.0, 0.0, 0.0));
+        const size_t numTargetPoints = targetPoints.size(); // 缓存大小
+        inducedVelocities.assign(numTargetPoints, Vec3(0.0, 0.0, 0.0));
 
         if (timestep >= wake.bladeWakes.size() || wake.bladeWakes[timestep].empty())
         {
@@ -20,9 +21,13 @@ namespace fvw
             return; // 或者抛出异常
         }
 
-        for (size_t p_idx = 0; p_idx < targetPoints.size(); ++p_idx)
+        // 预计算
+        const double cutOffSquared = cutOff * cutOff;
+        const double four_pi = 4.0 * M_PI;
+
+        for (size_t p_idx = 0; p_idx < numTargetPoints; ++p_idx)
         {
-            Vec3 p = targetPoints[p_idx];
+            const Vec3 &p = targetPoints[p_idx]; // 使用引用
             Vec3 total_vel_at_p(0.0, 0.0, 0.0);
 
             // 遍历该时间步的所有叶片
@@ -42,14 +47,14 @@ namespace fvw
                         continue; // 跳过这条无效线段
                     }
 
-                    Vec3 x1 = nodes[line.startNodeIdx].position;
-                    Vec3 x2 = nodes[line.endNodeIdx].position;
+                    const Vec3 &x1 = nodes[line.startNodeIdx].position; // 使用引用
+                    const Vec3 &x2 = nodes[line.endNodeIdx].position;
                     double gamma = line.gamma;
 
                     // --- 执行 Biot-Savart 计算 ---
 
                     Vec3 l_vec = x2 - x1;
-                    double l_squared = l_vec.x * l_vec.x + l_vec.y * l_vec.y + l_vec.z * l_vec.z;
+                    double l_squared = l_vec.norm_squared();
 
                     if (l_squared < 1e-12)
                     {
@@ -57,8 +62,8 @@ namespace fvw
                         continue; // 跳过长度为零的线段
                     }
 
-                    double cut_l = cutOff * cutOff * l_squared;
-                    double coeff = gamma / (4.0 * M_PI);
+                    double cut_l = cutOffSquared * l_squared; // 使用预计算的平方
+                    double coeff = gamma / four_pi;           // 使用预计算的 M_PI
 
                     Vec3 r1 = p - x1;
                     Vec3 r2 = p - x2;
@@ -70,11 +75,12 @@ namespace fvw
 
                     double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + cut_l;
 
-                    double contribution = coeff * (r1_norm + r2_norm) / denominator;
-                    Vec3 vel_contrib = cross_r1_r2 * contribution;
+                    double factor = coeff * (r1_norm + r2_norm) / denominator;
 
-                    // --- 结束 Biot-Savart 计算 ---
-                    total_vel_at_p = total_vel_at_p + vel_contrib;
+                    // total_vel_at_p = total_vel_at_p + cross_r1_r2 * factor;
+                    total_vel_at_p.x += cross_r1_r2.x * factor;
+                    total_vel_at_p.y += cross_r1_r2.y * factor;
+                    total_vel_at_p.z += cross_r1_r2.z * factor;
                 }
             }
 
@@ -392,7 +398,7 @@ namespace fvw
 
         std::cout << "Wake structure advanced to timestep " << currentTimestep << "." << std::endl;
     }
-    
+
     // Kutta循环 update vortex strength
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,

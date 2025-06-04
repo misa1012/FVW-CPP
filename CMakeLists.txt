@@ -4,6 +4,9 @@ project(FVW_Simulation)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Option to enable gprof profiling
+option(ENABLE_PROFILING "Enable gprof profiling" OFF) # Default, can be changed with -DENABLE_PROFILING=ON
+
 # 查找 HDF5
 find_package(HDF5 REQUIRED COMPONENTS CXX)
 if(HDF5_FOUND)
@@ -36,13 +39,13 @@ set(VALIDATION_SOURCES
     validation/src/validate_position.cpp
 )
 
-# Executable
+# --- Executable: fvw_cpp ---
 add_executable(fvw_cpp ${SRC_SOURCES} ${VALIDATION_SOURCES})
 
-# Link HDF5 libraries
-target_link_libraries(fvw_cpp ${HDF5_CXX_LIBRARIES})
+# Link HDF5 libraries for fvw_cpp
+target_link_libraries(fvw_cpp PRIVATE ${HDF5_CXX_LIBRARIES})
 
-# New executable for compute_induced_velocity
+# --- Executable: compute_induced_velocity ---
 add_executable(compute_induced_velocity
     compute_induced_velocity.cpp
     src/utils.cpp
@@ -59,7 +62,25 @@ add_executable(compute_induced_velocity
 # Link HDF5 libraries for compute_induced_velocity
 target_link_libraries(compute_induced_velocity PRIVATE ${HDF5_CXX_LIBRARIES})
 
-# Compiler flags
-if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang|MSVC")
-    add_compile_options(-Wall -Wextra)
+# --- Compiler and Linker Flags ---
+
+# General warning flags (applied to both targets)
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(fvw_cpp PRIVATE -Wall -Wextra)
+    target_compile_options(compute_induced_velocity PRIVATE -Wall -Wextra)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(fvw_cpp PRIVATE /W4)
+    target_compile_options(compute_induced_velocity PRIVATE /W4)
 endif()
+
+# Profiling flags (applied to both targets if ENABLE_PROFILING is ON)
+if(ENABLE_PROFILING)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang") # -pg is for GCC/Clang
+        message(STATUS "gprof profiling enabled. Adding -pg flags.")
+        target_compile_options(fvw_cpp PRIVATE -pg)
+        target_link_options(fvw_cpp PRIVATE -pg)
+    else()
+        message(WARNING "ENABLE_PROFILING is ON, but the current compiler (${CMAKE_CXX_COMPILER_ID}) might not support gprof (-pg).")
+    endif()
+endif()
+

@@ -12,6 +12,7 @@ namespace fvw
     {
         double x, y, z;
         Vec3(double x_ = 0, double y_ = 0, double z_ = 0) : x(x_), y(y_), z(z_) {}
+        // 这些返回的是一个新的 Vec3 对象
         Vec3 operator+(const Vec3 &other) const { return {x + other.x, y + other.y, z + other.z}; }
         Vec3 operator-(const Vec3 &other) const { return {x - other.x, y - other.y, z - other.z}; }
         Vec3 operator*(double s) const { return {x * s, y * s, z * s}; }
@@ -24,17 +25,43 @@ namespace fvw
         // 添加 operator< 以支持 std::map
         bool operator<(const Vec3 &other) const
         {
-            if (x != other.x) return x < other.x;
-            if (y != other.y) return y < other.y;
+            if (x != other.x)
+                return x < other.x;
+            if (y != other.y)
+                return y < other.y;
             return z < other.z;
         }
+        // new operator
+        Vec3 &operator+=(const Vec3 &other)
+        {
+            x += other.x;
+            y += other.y;
+            z += other.z;
+            return *this;
+        }
+        Vec3 &operator-=(const Vec3 &other)
+        {
+            x -= other.x;
+            y -= other.y;
+            z -= other.z;
+            return *this;
+        }
+        Vec3 &operator*=(double s)
+        {
+            x *= s;
+            y *= s;
+            z *= s;
+            return *this;
+        }
+        // 如果有norm_squared()会更好
+        double norm_squared() const { return x * x + y * y + z * z; }
     };
 
     double interpolate(const std::vector<double> &x, const std::vector<double> &y, double x0);
     int interpolateInt(const std::vector<double> &x, const std::vector<int> &y, double xq);
 
     // Output
-    std::string to_string(const Vec3& v);
+    std::string to_string(const Vec3 &v);
 
 } // namespace fvw
 
