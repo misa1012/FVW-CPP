@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iomanip>
 #include <ctime>
+#include <omp.h>
 
 namespace fvw
 {
@@ -25,6 +26,7 @@ namespace fvw
         const double cutOffSquared = cutOff * cutOff;
         const double four_pi = 4.0 * M_PI;
 
+#pragma omp parallel for
         for (size_t p_idx = 0; p_idx < numTargetPoints; ++p_idx)
         {
             const Vec3 &p = targetPoints[p_idx]; // 使用引用

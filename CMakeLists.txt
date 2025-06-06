@@ -62,6 +62,18 @@ add_executable(compute_induced_velocity
 # Link HDF5 libraries for compute_induced_velocity
 target_link_libraries(compute_induced_velocity PRIVATE ${HDF5_CXX_LIBRARIES})
 
+find_package(OpenMP)
+if(OpenMP_CXX_FOUND)
+    message(STATUS "OpenMP CXX support found. Adding OpenMP flags.")
+    # 为目标添加编译和链接选项
+    target_compile_options(compute_induced_velocity PRIVATE ${OpenMP_CXX_FLAGS})
+    target_link_libraries(compute_induced_velocity PRIVATE ${OpenMP_CXX_LIBRARIES}) # 关键是这个链接库
+
+    # 如果 fvw_cpp 也用 OpenMP
+    target_compile_options(fvw_cpp PRIVATE ${OpenMP_CXX_FLAGS})
+    target_link_libraries(fvw_cpp PRIVATE ${OpenMP_CXX_LIBRARIES})
+endif()
+
 # --- Compiler and Linker Flags ---
 
 # General warning flags (applied to both targets)
