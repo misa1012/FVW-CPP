@@ -147,10 +147,6 @@ namespace fvw
                 std::string wakeBladeGroupName = wakeTimestepName + "/blade_" + std::to_string(b);
                 H5::Group wakeBladeGroup = wakeTimestepGroup.createGroup(wakeBladeGroupName);
 
-                // LiftingLine 叶片组
-                std::string liftingBladeGroupName = liftingTimestepName + "/blade_" + std::to_string(b);
-                H5::Group liftingBladeGroup = liftingTimestepGroup.createGroup(liftingBladeGroupName);
-
                 // 1. 写入节点数据
                 if (!nodes.empty())
                 {
@@ -193,6 +189,10 @@ namespace fvw
                     lineDataset.write(&lineData[0], H5::PredType::NATIVE_DOUBLE);
                 }
 
+                // LiftingLine 叶片组
+                std::string liftingBladeGroupName = liftingTimestepName + "/blade_" + std::to_string(b);
+                H5::Group liftingBladeGroup = liftingTimestepGroup.createGroup(liftingBladeGroupName);
+
                 // 3. 写入性能数据 (cl, cd, aoa)
                 hsize_t perfDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (cl,cd,aoa)]
                 H5::DataSpace perfSpace(2, perfDims);
@@ -208,72 +208,72 @@ namespace fvw
                 }
                 perfDataset.write(&perfData[0], H5::PredType::NATIVE_DOUBLE);
 
-                // 4. 写入诱导速度数据 (u, v, w)
-                H5::Group inducedVelGroup = liftingBladeGroup.createGroup("induced_velocity");
+                // // 4. 写入诱导速度数据 (u, v, w)
+                // H5::Group inducedVelGroup = liftingBladeGroup.createGroup("induced_velocity");
 
-                hsize_t inducedVelDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (u,v,w)]
-                H5::DataSpace inducedVelSpace(2, inducedVelDims);
+                // hsize_t inducedVelDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (u,v,w)]
+                // H5::DataSpace inducedVelSpace(2, inducedVelDims);
 
-                H5::DataSet bcsDataset = inducedVelGroup.createDataSet("BCS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
-                bcsDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
-                    .write(H5::StrType(H5::PredType::C_S1, 32), "blade_frame");
+                // H5::DataSet bcsDataset = inducedVelGroup.createDataSet("BCS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                // bcsDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                //     .write(H5::StrType(H5::PredType::C_S1, 32), "blade_frame");
 
-                std::vector<double> bcsData(turbineParams.nSegments * 3);
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
-                    const Vec3 &velocity = perf.inducedVelocityAt(b, timestep, i);
-                    bcsData[i * 3 + 0] = velocity.x; // u
-                    bcsData[i * 3 + 1] = velocity.y; // v
-                    bcsData[i * 3 + 2] = velocity.z; // w
-                }
-                bcsDataset.write(&bcsData[0], H5::PredType::NATIVE_DOUBLE);
+                // std::vector<double> bcsData(turbineParams.nSegments * 3);
+                // for (int i = 0; i < turbineParams.nSegments; ++i)
+                // {
+                //     const Vec3 &velocity = perf.inducedVelocityAt(b, timestep, i);
+                //     bcsData[i * 3 + 0] = velocity.x; // u
+                //     bcsData[i * 3 + 1] = velocity.y; // v
+                //     bcsData[i * 3 + 2] = velocity.z; // w
+                // }
+                // bcsDataset.write(&bcsData[0], H5::PredType::NATIVE_DOUBLE);
 
-                // ICS (惯性坐标系)
-                H5::DataSet icsDataset = inducedVelGroup.createDataSet("ICS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
-                icsDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
-                    .write(H5::StrType(H5::PredType::C_S1, 32), "inertial_frame");
+                // // ICS (惯性坐标系)
+                // H5::DataSet icsDataset = inducedVelGroup.createDataSet("ICS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                // icsDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                //     .write(H5::StrType(H5::PredType::C_S1, 32), "inertial_frame");
 
-                std::vector<double> icsData(turbineParams.nSegments * 3);
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
-                    const Vec3 &velocity = perf.inducedVelocityICSAt(b, timestep, i);
-                    icsData[i * 3 + 0] = velocity.x; // x
-                    icsData[i * 3 + 1] = velocity.y; // y
-                    icsData[i * 3 + 2] = velocity.z; // z
-                }
-                icsDataset.write(&icsData[0], H5::PredType::NATIVE_DOUBLE);
+                // std::vector<double> icsData(turbineParams.nSegments * 3);
+                // for (int i = 0; i < turbineParams.nSegments; ++i)
+                // {
+                //     const Vec3 &velocity = perf.inducedVelocityICSAt(b, timestep, i);
+                //     icsData[i * 3 + 0] = velocity.x; // x
+                //     icsData[i * 3 + 1] = velocity.y; // y
+                //     icsData[i * 3 + 2] = velocity.z; // z
+                // }
+                // icsDataset.write(&icsData[0], H5::PredType::NATIVE_DOUBLE);
 
-                // 2.3 写入 velBCS 数据
-                H5::Group bladeVelocityGroup = liftingBladeGroup.createGroup("blade_velocity");
-                H5::DataSet velBCSDataset = bladeVelocityGroup.createDataSet("velBCS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
-                velBCSDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
-                    .write(H5::StrType(H5::PredType::C_S1, 32), "blade_frame");
+                // // 2.3 写入 velBCS 数据
+                // H5::Group bladeVelocityGroup = liftingBladeGroup.createGroup("blade_velocity");
+                // H5::DataSet velBCSDataset = bladeVelocityGroup.createDataSet("velBCS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                // velBCSDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                //     .write(H5::StrType(H5::PredType::C_S1, 32), "blade_frame");
 
-                std::vector<double> velBCSData(turbineParams.nSegments * 3);
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
+                // std::vector<double> velBCSData(turbineParams.nSegments * 3);
+                // for (int i = 0; i < turbineParams.nSegments; ++i)
+                // {
 
-                    const Vec3 &velocity = velBCS.at(b, timestep, i);
-                    velBCSData[i * 3 + 0] = velocity.x; // x
-                    velBCSData[i * 3 + 1] = velocity.y; // y
-                    velBCSData[i * 3 + 2] = velocity.z; // z
-                }
-                velBCSDataset.write(&velBCSData[0], H5::PredType::NATIVE_DOUBLE);
+                //     const Vec3 &velocity = velBCS.at(b, timestep, i);
+                //     velBCSData[i * 3 + 0] = velocity.x; // x
+                //     velBCSData[i * 3 + 1] = velocity.y; // y
+                //     velBCSData[i * 3 + 2] = velocity.z; // z
+                // }
+                // velBCSDataset.write(&velBCSData[0], H5::PredType::NATIVE_DOUBLE);
 
-                H5::DataSet velICSDataset = bladeVelocityGroup.createDataSet("velICS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
-                velICSDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
-                    .write(H5::StrType(H5::PredType::C_S1, 32), "inertial_frame");
+                // H5::DataSet velICSDataset = bladeVelocityGroup.createDataSet("velICS", H5::PredType::NATIVE_DOUBLE, inducedVelSpace);
+                // velICSDataset.createAttribute("coordinate_system", H5::StrType(H5::PredType::C_S1, 32), H5::DataSpace(H5S_SCALAR))
+                //     .write(H5::StrType(H5::PredType::C_S1, 32), "inertial_frame");
 
-                std::vector<double> velICSData(turbineParams.nSegments * 3);
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
+                // std::vector<double> velICSData(turbineParams.nSegments * 3);
+                // for (int i = 0; i < turbineParams.nSegments; ++i)
+                // {
 
-                    const Vec3 &velocity = velICS.at(b, timestep, i);
-                    velICSData[i * 3 + 0] = velocity.x; // x
-                    velICSData[i * 3 + 1] = velocity.y; // y
-                    velICSData[i * 3 + 2] = velocity.z; // z
-                }
-                velICSDataset.write(&velICSData[0], H5::PredType::NATIVE_DOUBLE);
+                //     const Vec3 &velocity = velICS.at(b, timestep, i);
+                //     velICSData[i * 3 + 0] = velocity.x; // x
+                //     velICSData[i * 3 + 1] = velocity.y; // y
+                //     velICSData[i * 3 + 2] = velocity.z; // z
+                // }
+                // velICSDataset.write(&velICSData[0], H5::PredType::NATIVE_DOUBLE);
 
                 // 2.4 写入 Bound Gamma 数据
                 hsize_t gammaDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 1}; // [nSegments, 1]
@@ -287,24 +287,24 @@ namespace fvw
                 }
                 gammaDataset.write(&gammaData[0], H5::PredType::NATIVE_DOUBLE);
 
-                // 2.5 写入 pos.boundAt 数据
-                hsize_t posDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, 3] for x, y, z
-                H5::DataSpace posSpace(2, posDims);
-                H5::DataSet posDataset = liftingBladeGroup.createDataSet("pos_bound", H5::PredType::NATIVE_DOUBLE, posSpace);
+                // // 2.5 写入 pos.boundAt 数据
+                // hsize_t posDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, 3] for x, y, z
+                // H5::DataSpace posSpace(2, posDims);
+                // H5::DataSet posDataset = liftingBladeGroup.createDataSet("pos_bound", H5::PredType::NATIVE_DOUBLE, posSpace);
 
-                // 分配存储位置数据的向量
-                std::vector<double> posData(turbineParams.nSegments * 3); // [nSegments * 3] for x, y, z
-                for (int i = 0; i < turbineParams.nSegments; ++i)
-                {
-                    Vec3 position_bound = pos.boundAt(b, timestep, i); // 获取位置 (x, y, z)
-                    posData[i * 3 + 0] = position_bound.x;                    // x 分量
-                    posData[i * 3 + 1] = position_bound.y;                    // y 分量
-                    posData[i * 3 + 2] = position_bound.z;                    // z 分量
-                    // 调试输出
-                    // std::cout << "pos_bound(b=" << b << ", t=" << timestep << ", i=" << i
-                    //           << "): x=" << position_bound.x << ", y=" << position_bound.y << ", z=" << position_bound.z << std::endl;
-                }
-                posDataset.write(&posData[0], H5::PredType::NATIVE_DOUBLE);
+                // // 分配存储位置数据的向量
+                // std::vector<double> posData(turbineParams.nSegments * 3); // [nSegments * 3] for x, y, z
+                // for (int i = 0; i < turbineParams.nSegments; ++i)
+                // {
+                //     Vec3 position_bound = pos.boundAt(b, timestep, i); // 获取位置 (x, y, z)
+                //     posData[i * 3 + 0] = position_bound.x;                    // x 分量
+                //     posData[i * 3 + 1] = position_bound.y;                    // y 分量
+                //     posData[i * 3 + 2] = position_bound.z;                    // z 分量
+                //     // 调试输出
+                //     // std::cout << "pos_bound(b=" << b << ", t=" << timestep << ", i=" << i
+                //     //           << "): x=" << position_bound.x << ", y=" << position_bound.y << ", z=" << position_bound.z << std::endl;
+                // }
+                // posDataset.write(&posData[0], H5::PredType::NATIVE_DOUBLE);
             }
 
             std::cout << "Wrote HDF5 data for timestep " << timestep << " to " << outputFile << std::endl;

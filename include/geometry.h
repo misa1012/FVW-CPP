@@ -12,6 +12,7 @@ namespace fvw
         double dt;
         double totalTime;
         int timesteps;
+        int outputFrequency;
     };
 
     struct TurbineParams

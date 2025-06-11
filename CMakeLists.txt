@@ -76,6 +76,22 @@ endif()
 
 # --- Compiler and Linker Flags ---
 
+# 设置默认的编译类型为 Release，如果用户没有指定的话
+if(NOT CMAKE_BUILD_TYPE)
+  set(CMAKE_BUILD_TYPE Release)
+  message(STATUS "No build type specified, defaulting to 'Release'.")
+endif()
+
+# 为不同的编译类型设置标志
+# Release: 开启 O3 优化，并关闭断言 (NDEBUG)
+set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
+# Debug: 关闭优化，开启调试信息，保留断言
+set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
+# RelWithDebInfo: 开启 O2 优化，并开启调试信息
+set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DNDEBUG")
+
+message(STATUS "Build type is: ${CMAKE_BUILD_TYPE}")
+
 # General warning flags (applied to both targets)
 if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
     target_compile_options(fvw_cpp PRIVATE -Wall -Wextra)

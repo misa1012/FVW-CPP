@@ -27,8 +27,9 @@ int main(int argc, char *argv[])
     // Simulation parameters
     fvw::SimParams simParams;
     simParams.dt = 0.06;
-    simParams.totalTime = 6.0;
+    simParams.totalTime = 120.0;
     simParams.timesteps = static_cast<int>(simParams.totalTime / simParams.dt) + 1;
+    simParams.outputFrequency = 10; //每10步输出一次HDF5
     // Turbine parameters
     fvw::TurbineParams turbineParams;
     turbineParams.windSpeed = 11.4;
@@ -47,7 +48,7 @@ int main(int argc, char *argv[])
     // Section 2. Read in airfoil files
     // Call airfoil.h
     // Read airfoils
-    auto airfoils = fvw::readAirfoils("/home/sa/vortex/FVW-CPP/data/NREL_files/");
+    auto airfoils = fvw::readAirfoils("/home/shug8104/sa/vortex/FVW-CPP/data/NREL_files/");
     std::cout << "Airfoil profiles read-in completed." << std::endl;
 
     // Section 3. Calculate the initial position
@@ -103,7 +104,8 @@ int main(int argc, char *argv[])
 
     // timestep=0：写入配置和初始数据
     {
-        fvw::writeWakeToVTK(wake, turbineParams, "../results/output", 0);
+        // 不写入vtk文件以节省时间
+        // fvw::writeWakeToVTK(wake, turbineParams, "../results/output", 0);
         fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", 0);
         fvw::writeConfigToHDF5(geom, turbineParams, simParams, "../results/wake.h5");
     }
@@ -130,8 +132,14 @@ int main(int argc, char *argv[])
         fvw::UpdateWakeVelocities(wake, turbineParams, t);
 
         // 4. 写入 VTK 文件
-        fvw::writeWakeToVTK(wake, turbineParams, "../results/output", t);
-        fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", t);
+        // fvw::writeWakeToVTK(wake, turbineParams, "../results/output", t);
+        // fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", t);
+
+        // --- 按频率输出HDF5 ---
+        if (t % simParams.outputFrequency == 0 || t == simParams.timesteps - 1)
+        {
+            fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", t);
+        }
 
         auto step_end = std::chrono::high_resolution_clock::now();
         auto step_duration = std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_start);
@@ -139,6 +147,8 @@ int main(int argc, char *argv[])
                   << step_duration.count() / 1e6 << " s" << std::endl;
     }
 
+    // 最后一步输出vtk文件
+    fvw::writeWakeToVTK(wake, turbineParams, "../results/", simParams.timesteps-1);
     std::cout << "\n[END] Wake computation completed." << std::endl;
 
     // 总计时结束
