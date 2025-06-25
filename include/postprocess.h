@@ -19,6 +19,8 @@ namespace fvw
 
     void writeConfigToHDF5(const BladeGeometry &geom, const TurbineParams &turbineParams,
                            const SimParams &simParams, const std::string &outputFile);
+
+    void read_wake_snapshot(Wake &wake, const std::string &h5_filepath, int timestep, const TurbineParams &turbineParams);
 }
 
 #endif // POSTPROCESS_H

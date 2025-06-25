@@ -413,4 +413,79 @@ namespace fvw
             std::cerr << "HDF5 error in writeConfigToHDF5: " << e.getDetailMsg() << std::endl;
         }
     }
+
+    // 读取HDF5快照
+    void read_wake_snapshot(Wake &wake, const std::string &h5_filepath, int timestep, const TurbineParams &turbineParams)
+    {
+        try
+        {
+            // 以只读模式打开HDF5文件
+            H5::H5File file(h5_filepath, H5F_ACC_RDONLY);
+
+            // --- 核心修复：在填充数据之前，确保Wake对象内部的vector有足够的空间 ---
+            wake.ensureTimeStepExists(timestep);
+
+            std::string wakeTimestepName = "/wake/timestep_" + std::to_string(timestep);
+            if (!file.exists(wakeTimestepName))
+            {
+                throw std::runtime_error("Timestep " + std::to_string(timestep) + " not found in HDF5 file.");
+            }
+
+            for (int b = 0; b < turbineParams.nBlades; ++b)
+            {
+                BladeWake &bladeWake = wake.getBladeWake(timestep, b);
+                std::string bladeGroupName = wakeTimestepName + "/blade_" + std::to_string(b);
+
+                // 1. 读取节点数据
+                std::string nodeDatasetName = bladeGroupName + "/nodes";
+                if (file.exists(nodeDatasetName))
+                {
+                    H5::DataSet nodeDataset = file.openDataSet(nodeDatasetName);
+                    H5::DataSpace nodeSpace = nodeDataset.getSpace();
+
+                    hsize_t nodeDims[2];
+                    nodeSpace.getSimpleExtentDims(nodeDims, NULL);
+                    size_t nNodes = nodeDims[0];
+
+                    std::vector<double> nodeData(nNodes * 6);
+                    nodeDataset.read(nodeData.data(), H5::PredType::NATIVE_DOUBLE);
+
+                    bladeWake.nodes.resize(nNodes);
+                    for (size_t i = 0; i < nNodes; ++i)
+                    {
+                        bladeWake.nodes[i].position = {nodeData[i * 6 + 0], nodeData[i * 6 + 1], nodeData[i * 6 + 2]};
+                        bladeWake.nodes[i].velocity = {nodeData[i * 6 + 3], nodeData[i * 6 + 4], nodeData[i * 6 + 5]};
+                    }
+                }
+
+                // 2. 读取涡线数据
+                std::string lineDatasetName = bladeGroupName + "/lines";
+                if (file.exists(lineDatasetName))
+                {
+                    H5::DataSet lineDataset = file.openDataSet(lineDatasetName);
+                    H5::DataSpace lineSpace = lineDataset.getSpace();
+
+                    hsize_t lineDims[2];
+                    lineSpace.getSimpleExtentDims(lineDims, NULL);
+                    size_t nLines = lineDims[0];
+
+                    std::vector<double> lineData(nLines * 4);
+                    lineDataset.read(lineData.data(), H5::PredType::NATIVE_DOUBLE);
+
+                    bladeWake.lines.resize(nLines);
+                    for (size_t i = 0; i < nLines; ++i)
+                    {
+                        bladeWake.lines[i].startNodeIdx = static_cast<int>(lineData[i * 4 + 0]);
+                        bladeWake.lines[i].endNodeIdx = static_cast<int>(lineData[i * 4 + 1]);
+                        bladeWake.lines[i].gamma = lineData[i * 4 + 2];
+                        bladeWake.lines[i].type = static_cast<VortexLineType>(lineData[i * 4 + 3]);
+                    }
+                }
+            }
+        }
+        catch (const H5::Exception &e)
+        {
+            std::cerr << "HDF5 read error: " << e.getDetailMsg() << std::endl;
+        }
+    }
 } // namespace fvw
