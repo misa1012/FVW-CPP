@@ -135,3 +135,27 @@ if(OpenMP_CXX_FOUND)
     target_compile_options(postprocess_probes PRIVATE ${OpenMP_CXX_FLAGS})
     target_link_libraries(postprocess_probes PRIVATE ${OpenMP_CXX_LIBRARIES})
 endif()
+
+
+# --- 可执行程序: postprocess_grid ---
+add_executable(postprocess_grid
+    postprocess_grid.cpp    # 你的新主文件
+    src/utils.cpp
+    src/airfoil.cpp
+    src/geometry.cpp
+    src/position.cpp
+    src/velocity.cpp
+    src/performance.cpp
+    src/bem.cpp
+    src/wake.cpp
+    src/postprocess.cpp  
+)
+
+# 为新的目标链接HDF5库
+target_link_libraries(postprocess_grid PRIVATE ${HDF5_CXX_LIBRARIES})
+
+# 如果需要OpenMP，也需要链接
+if(OpenMP_CXX_FOUND)
+    target_compile_options(postprocess_grid PRIVATE ${OpenMP_CXX_FLAGS})
+    target_link_libraries(postprocess_grid PRIVATE ${OpenMP_CXX_LIBRARIES})
+endif()

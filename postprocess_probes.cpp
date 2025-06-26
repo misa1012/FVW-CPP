@@ -15,7 +15,7 @@ int main() {
     std::string csv_filepath = "../results/probe_output.csv";
     double D = 126.0;
 
-    // 这里你需要一个 TurbineParams 对象来传递给 read_wake_snapshot
+    // 这里需要一个 TurbineParams 对象来传递给 read_wake_snapshot
     // 最好的方法是从HDF5的config组里读取，这里为了简化，我们先手动创建
     fvw::TurbineParams turbineParams;
     turbineParams.nBlades = 3;
