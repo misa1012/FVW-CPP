@@ -11,7 +11,7 @@
 
 int main() {
     // 自定义参数
-    std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250621_2000_cutoff_0_5/wake.h5";
+    std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250611_2000steps/wake.h5";
     std::string csv_filepath = "../results/probe_output.csv";
     double D = 126.0;
 
@@ -41,7 +41,7 @@ int main() {
     int end_step = 2000;
     int step_interval = 10;
     double dt = 0.06;
-    double cutOff = 0.05;    // Biot-Savart的cutOff参数
+    double cutOff = 0.005;    // Biot-Savart的cutOff参数
     
     // 创建一个Wake对象，它将在循环中被重复填充
     fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);

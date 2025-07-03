@@ -4,12 +4,13 @@
 #include <fstream>
 #include <iomanip>
 #include <chrono>
+#include <cmath>
 
 #include "wake.h"
 #include "postprocess.h"
 #include "geometry.h"
 
-// 新增一个函数，用于将计算出的速度场写入VTK文件
+// VTK写入函数的声明
 void write_field_to_vtk(const std::string &filename,
                         const std::vector<fvw::Vec3> &grid_points,
                         const std::vector<fvw::Vec3> &velocities,
@@ -17,12 +18,12 @@ void write_field_to_vtk(const std::string &filename,
 
 int main()
 {
+
+    // --- 参数定义 ---
     const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/wake.h5";
-    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/velocity_field_t3000.vtk";
+    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/velocity_field_t3000_non_uniform2.vtk";
     const int timestep_to_process = 3000;
     const double TURBINE_DIAMETER = 126.0;
-
-    // =======================================================================
 
     fvw::TurbineParams turbineParams;
     turbineParams.nBlades = 3;
@@ -43,44 +44,77 @@ int main()
     }
     std::cout << "尾流状态重建成功。" << std::endl;
 
-    // 3. 定义欧拉网格 (与之前相同)
-    const double cell_size_m = 5.0; // 每个网格单元的边长（米）
-    std::cout << "根据 " << cell_size_m << "m 的分辨率创建欧拉网格..." << std::endl;
+    // =======================================================================
+    // --- 3. 定义并创建非均匀欧拉网格---
+    // =======================================================================
+    std::cout << "正在创建非均匀欧拉网格点..." << std::endl;
 
-    const double x_start_D = -1.0, x_end_D = 10.0;
-    const double y_range_D = 1.5;
-    const double z_range_D = 1.5;
+    // a. 定义各区域的分辨率和边界
+    const double res_high_m = 1.0; // 高分辨率区域的单元尺寸 (米)
+    const double res_low_m = 5.0;  // 低分辨率区域的单元尺寸 (米)
 
-    const double x_range_m = (x_end_D - x_start_D) * TURBINE_DIAMETER;
-    const double y_range_m = y_range_D * TURBINE_DIAMETER;
-    const double z_range_m = z_range_D * TURBINE_DIAMETER;
+    // 定义高分辨率“盒子”的范围
+    const double x_fine_start_m = 0.0 * TURBINE_DIAMETER;
+    const double x_fine_end_m = 3.0 * TURBINE_DIAMETER;
 
-    // 使用 std::ceil 来向上取整，确保网格能完整覆盖指定范围
-    const int Nx = static_cast<int>(std::ceil(x_range_m / cell_size_m)) + 1;
-    const int Ny = static_cast<int>(std::ceil(y_range_m / cell_size_m)) + 1;
-    const int Nz = static_cast<int>(std::ceil(z_range_m / cell_size_m)) + 1;
+    // 定义整个计算域的范围
+    const double x_start_m = -1.0 * TURBINE_DIAMETER;
+    const double x_end_m = 10.0 * TURBINE_DIAMETER;
+    const double y_max_m = 1.5 * TURBINE_DIAMETER / 2.0; // +/- 1.5R
+    const double z_max_m = 1.5 * TURBINE_DIAMETER;       // 0 到 3R
 
-    std::cout << "正在创建欧拉网格点..." << std::endl;
+    // b. 分段生成各方向的坐标点
+    std::vector<double> x_coords, y_coords, z_coords;
+
+    // 生成 X 坐标 (非均匀)
+    for (double x = x_start_m; x < x_fine_start_m; x += res_low_m)
+        x_coords.push_back(x);
+    for (double x = x_fine_start_m; x < x_fine_end_m; x += res_high_m)
+        x_coords.push_back(x);
+    for (double x = x_fine_end_m; x <= x_end_m; x += res_low_m)
+        x_coords.push_back(x);
+
+    // Y和Z方向也使用同样逻辑，但在中心区域加密
+    const double yz_fine_range_m = 1.5 * TURBINE_DIAMETER / 2.0; // 在 +/- 1R 范围内加密
+    for (double y = -y_max_m; y < -yz_fine_range_m; y += res_low_m)
+        y_coords.push_back(y);
+    for (double y = -yz_fine_range_m; y <= yz_fine_range_m; y += res_high_m)
+        y_coords.push_back(y);
+    for (double y = yz_fine_range_m + res_low_m; y <= y_max_m; y += res_low_m)
+        y_coords.push_back(y);
+
+    // Z方向从轮毂中心(假设为90m)附近加密
+    const double hub_height = 90.0;
+    for (double z = 0; z < hub_height - yz_fine_range_m; z += res_low_m)
+        z_coords.push_back(z);
+    for (double z = hub_height - yz_fine_range_m; z <= hub_height + yz_fine_range_m; z += res_high_m)
+        z_coords.push_back(z);
+    for (double z = hub_height + yz_fine_range_m + res_low_m; z <= z_max_m; z += res_low_m)
+        z_coords.push_back(z);
+
+    const int Nx = x_coords.size();
+    const int Ny = y_coords.size();
+    const int Nz = z_coords.size();
+
+    // c. 组合坐标点生成最终的网格点云
     std::vector<fvw::Vec3> grid_points;
     grid_points.reserve(Nx * Ny * Nz);
-
     for (int k = 0; k < Nz; ++k)
     {
         for (int j = 0; j < Ny; ++j)
         {
             for (int i = 0; i < Nx; ++i)
             {
-                double x = (x_start_D + (x_end_D - x_start_D) * i / (Nx - 1)) * TURBINE_DIAMETER;
-                double y = (-y_range_D + (2.0 * y_range_D) * j / (Ny - 1)) * (TURBINE_DIAMETER / 2.0);
-                double z = (0.0 + (2.0 * z_range_D) * k / (Nz - 1)) * (TURBINE_DIAMETER / 2.0);
-                grid_points.push_back({x, y, z});
+                grid_points.push_back({x_coords[i], y_coords[j], z_coords[k]});
             }
         }
     }
-    std::cout << "网格创建完毕。维度: " << Nx << " x " << Ny << " x " << Nz
-              << ", 总点数: " << grid_points.size() << std::endl;
 
-    // 4. 调用函数，计算网格上每个点的诱导速度 (与之前相同)
+    std::cout << "非均匀网格创建完毕。维度: " << Nx << " x " << Ny << " x " << Nz
+              << ", 总点数: " << grid_points.size() << std::endl;
+    // =======================================================================
+
+    // --- 4. & 5. 计算速度并写入VTK  ---
     std::cout << "开始计算网格点上的诱导速度 ..." << std::endl;
     auto calc_start = std::chrono::high_resolution_clock::now();
 
@@ -101,7 +135,7 @@ int main()
     return 0;
 }
 
-// --- VTK写入函数 (与之前相同) ---
+// --- VTK写入函数  ---
 void write_field_to_vtk(const std::string &filename,
                         const std::vector<fvw::Vec3> &grid_points,
                         const std::vector<fvw::Vec3> &velocities,
