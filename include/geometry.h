@@ -6,6 +6,12 @@
 
 namespace fvw
 {
+    // 定义涡核模型的类型
+    enum class VortexModelType {
+        VanGarrel,              // 0: 原始的、基于l0的平滑模型
+        GammaDecay,             // 1: Gamma人工耗散+移除模型
+        // QBlade                  // 2: QBlade的、带物理扩散和拉伸的高级模型
+    };
 
     struct SimParams
     {
@@ -13,6 +19,7 @@ namespace fvw
         double totalTime;
         int timesteps;
         int outputFrequency;
+        VortexModelType vortexModel;
     };
 
     struct TurbineParams

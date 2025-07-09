@@ -20,9 +20,9 @@ int main()
 {
 
     // --- 参数定义 ---
-    const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/wake.h5";
-    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/velocity_field_t3000_non_uniform2.vtk";
-    const int timestep_to_process = 3000;
+    const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250708_GammaDecay_2000_cutoff_0_005/wake.h5";
+    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250708_GammaDecay_2000_cutoff_0_005/velocity_field_t2000_gamma_decay_non_uniform2.vtk";
+    const int timestep_to_process = 2000;
     const double TURBINE_DIAMETER = 126.0;
 
     fvw::TurbineParams turbineParams;

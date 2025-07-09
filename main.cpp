@@ -29,7 +29,9 @@ int main(int argc, char *argv[])
     simParams.dt = 0.06;
     simParams.totalTime = 120.0;
     simParams.timesteps = static_cast<int>(simParams.totalTime / simParams.dt) + 1;
-    simParams.outputFrequency = 10; //每10步输出一次HDF5
+    simParams.outputFrequency = 10;                           // 每10步输出一次HDF5
+    simParams.vortexModel = fvw::VortexModelType::VanGarrel; // 选择vortex diffusion model
+
     // Turbine parameters
     fvw::TurbineParams turbineParams;
     turbineParams.windSpeed = 11.4;
@@ -127,6 +129,13 @@ int main(int argc, char *argv[])
         // 这将更新时间步 t 的附着涡线、脱落涡线和分离涡线的 gamma 值。
         fvw::kuttaJoukowskiIteration(wake, perf, geom, axes, turbineParams, pos, velBCS, airfoils);
 
+        // *** 在这里调用新的衰减和移除函数 ***
+        if (simParams.vortexModel == fvw::VortexModelType::GammaDecay)
+        {
+            std::cout << "Applying gamma decay model for timestep " << t << "..." << std::endl;
+            fvw::ApplyGammaDecayAndRemoval(wake, t, turbineParams, simParams);
+        }
+
         // 3. 更新时间步 t 的尾迹节点速度
         // 根据更新后的 gamma 值计算所有节点的总速度（诱导速度 + 自由来流速度）
         fvw::UpdateWakeVelocities(wake, turbineParams, t);
@@ -148,7 +157,7 @@ int main(int argc, char *argv[])
     }
 
     // 最后一步输出vtk文件
-    fvw::writeWakeToVTK(wake, turbineParams, "../results/", simParams.timesteps-1);
+    fvw::writeWakeToVTK(wake, turbineParams, "../results/", simParams.timesteps - 1);
     std::cout << "\n[END] Wake computation completed." << std::endl;
 
     // 总计时结束

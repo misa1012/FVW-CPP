@@ -20,7 +20,6 @@ namespace fvw
         Vec3 velocity;
     };
 
-    // 这个区分似乎，不太合理，区分了NewShed，也应该区分NewTrailing？
     enum class VortexLineType
     {
         Bound,
@@ -28,12 +27,22 @@ namespace fvw
         Trailing
     };
 
+    // 需要包含vortex model相关的信息
     struct VortexLine
     {
         int startNodeIdx;
         int endNodeIdx;
         double gamma;
         VortexLineType type;
+
+        // --- For Gamma Decay Model ---
+        double initial_gamma; // 涡元诞生时的初始环量
+        bool in_far_wake;     // 是否已进入远场开始衰减的标志
+
+        // --- For QBlade Model ---
+        // double age;                 // 涡元年龄 (s)
+        // double core_radius_squared; // 当前涡核半径的平方
+        // double oldLength;           // 上一时间步的长度 (m)
     };
 
     // --- 单个叶片在一个时间步的尾迹信息 ---
@@ -169,21 +178,26 @@ namespace fvw
 
     // --- 函数声明 ---
 
+    // Update the vortex core
+    // void UpdateVortexStates(Wake &wake, int timestep, const SimParams &simParams, const TurbineParams &turbineParams);
+
     // Biot-Savart function
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.5);
+                                const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.005);
 
     void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                                  const TurbineParams &turbineParams, const PositionData &pos, double dt);
 
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep);
 
-    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom, 
+    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom,
                               const TurbineParams &turbineParams, const PositionData &pos, double dt, int currentTimestep);
 
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,
                                  std::vector<AirfoilData> &airfoils);
+
+    void ApplyGammaDecayAndRemoval(Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams);
 } // namespace fvw
 
 #endif // FVW_WAKE_H

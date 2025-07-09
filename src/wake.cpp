@@ -5,9 +5,83 @@
 #include <iomanip>
 #include <ctime>
 #include <omp.h>
+#include <algorithm>
 
 namespace fvw
 {
+    // void UpdateVortexStates(Wake& wake, int timestep, const SimParams& simParams, const TurbineParams& turbineParams) {
+    //     if (timestep == 0) return; // t=0 时不更新
+
+    //     for (int b = 0; b < wake.nBlades; ++b) {
+    //         BladeWake& currentBladeWake = wake.getBladeWake(timestep, b);
+
+    //         // --- 根据选择的模型，执行不同的更新逻辑 ---
+    //         switch (simParams.vortexModel) {
+    //             // case VortexModelType::QBlade:
+    //             // {
+    //             //     const double a = 1.25643;
+    //             //     const double kin_viscosity = 1.5e-5;
+    //             //     const double turbulent_viscosity = 50.0; // 可调参数
+
+    //             //     for (VortexLine& line : currentBladeWake.lines) {
+    //             //         if (line.type == VortexLineType::Bound) continue; // 附着涡不演化
+
+    //             //         line.age += simParams.dt;
+
+    //             //         const Vec3& p1 = currentBladeWake.nodes[line.startNodeIdx].position;
+    //             //         const Vec3& p2 = currentBladeWake.nodes[line.endNodeIdx].position;
+    //             //         double new_length = (p2 - p1).norm();
+
+    //             //         double strain = 0.0;
+    //             //         if (line.oldLength > 1e-9) {
+    //             //             strain = (new_length - line.oldLength) / line.oldLength;
+    //             //         }
+
+    //             //         line.core_radius_squared += 4 * a * (turbulent_viscosity + kin_viscosity) * simParams.dt;
+    //             //         if (1.0 + strain > 1e-9) {
+    //             //             line.core_radius_squared /= (1.0 + strain);
+    //             //         }
+    //             //         line.oldLength = new_length;
+    //             //     }
+    //             //     break;
+    //             // }
+    //             case VortexModelType::GammaDecay:
+    //             {
+    //                 const double x_far_wake_D = 5.0;
+    //                 const double x_far_wake_m = x_far_wake_D * turbineParams.rTip * 2.0;
+    //                 const double alpha = 0.05; // 耗散率，可调参数
+
+    //                 for (VortexLine& line : currentBladeWake.lines) {
+    //                     if (line.type == VortexLineType::Bound) continue;
+    //                     if (line.in_far_wake) {
+    //                         line.gamma *= std::exp(-alpha * simParams.dt);
+    //                     } else {
+    //                         const Vec3& p1 = currentBladeWake.nodes[line.startNodeIdx].position;
+    //                         if (p1.x > x_far_wake_m) {
+    //                             line.in_far_wake = true;
+    //                         }
+    //                     }
+    //                 }
+
+    //                 // 移除弱涡
+    //                 auto& lines = currentBladeWake.lines;
+    //                 const double gamma_threshold_ratio = 0.01;
+    //                 lines.erase(
+    //                     std::remove_if(lines.begin(), lines.end(),
+    //                         [gamma_threshold_ratio](const VortexLine& line){
+    //                             if (!line.in_far_wake) return false;
+    //                             return std::abs(line.gamma) < (gamma_threshold_ratio * std::abs(line.initial_gamma));
+    //                         }),
+    //                     lines.end());
+    //                 break;
+    //             }
+    //             case VortexModelType::VanGarrel:
+    //                 // 此模型是静态的，无需在此处更新
+    //                 break;
+    //         }
+    //     }
+    // }
+
     // Biot-Savart function
     // Optimize for blade structure
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
@@ -52,6 +126,29 @@ namespace fvw
                     const Vec3 &x1 = nodes[line.startNodeIdx].position; // 使用引用
                     const Vec3 &x2 = nodes[line.endNodeIdx].position;
                     double gamma = line.gamma;
+
+                    // 更新vortex core
+                    // double rc_squared;
+                    // switch (simParams.vortexModel) {
+                    //     case VortexModelType::VanGarrel:
+                    //     {
+                    //         Vec3 l_vec = x2 - x1;
+                    //         rc_squared = cutOff * cutOff * l_vec.norm_squared();
+                    //         break;
+                    //     }
+                    //     case VortexModelType::QBlade:
+                    //     {
+                    //         rc_squared = line.core_radius_squared;
+                    //         break;
+                    //     }
+                    //     case VortexModelType::GammaDecay:
+                    //     {
+                    //         // 在这个模型中，我们主要关注gamma衰减，涡核模型可以复用简单的van Garrel
+                    //         Vec3 l_vec = x2 - x1;
+                    //         rc_squared = cutOff * cutOff * l_vec.norm_squared();
+                    //         break;
+                    //     }
+                    // }
 
                     // --- 执行 Biot-Savart 计算 ---
 
@@ -153,7 +250,11 @@ namespace fvw
             {
                 int startIdx = currentBladeWake.boundNodeIndices[i];
                 int endIdx = currentBladeWake.boundNodeIndices[i + 1];
-                currentBladeWake.boundLineIndices[i] = currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
+                int lineIdx = currentBladeWake.addLine({startIdx, endIdx, gamma_bound[i], VortexLineType::Bound});
+                VortexLine &newLine = currentBladeWake.lines.back();
+                newLine.initial_gamma = newLine.gamma;
+                newLine.in_far_wake = false;
+                currentBladeWake.boundLineIndices[i] = lineIdx;
             }
 
             // 添加初始尾迹涡线 (Trailing) - 连接叶片和第一层尾迹节点
@@ -162,7 +263,11 @@ namespace fvw
             {
                 int startIdx = currentBladeWake.trailNodeIndices[i];
                 int endIdx = currentBladeWake.boundNodeIndices[i];
-                currentBladeWake.trailingLineIndices[i] = currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
+                int lineIdx = currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
+                VortexLine &newLine = currentBladeWake.lines.back();
+                newLine.initial_gamma = newLine.gamma;
+                newLine.in_far_wake = false;
+                currentBladeWake.trailingLineIndices[i] = lineIdx;
             }
 
             // 添加初始脱落涡线 (Shed) - 连接相邻的初始尾迹节点
@@ -171,7 +276,11 @@ namespace fvw
             {
                 int startIdx = currentBladeWake.trailNodeIndices[i];
                 int endIdx = currentBladeWake.trailNodeIndices[i + 1];
-                currentBladeWake.shedLineIndices[i] = currentBladeWake.addLine({startIdx, endIdx, -gamma_bound[i], VortexLineType::Shed});
+                int lineIdx = currentBladeWake.addLine({startIdx, endIdx, -gamma_bound[i], VortexLineType::Shed});
+                VortexLine &newLine = currentBladeWake.lines.back();
+                newLine.initial_gamma = newLine.gamma;
+                newLine.in_far_wake = false;
+                currentBladeWake.shedLineIndices[i] = lineIdx;
             }
         }
 
@@ -319,7 +428,10 @@ namespace fvw
             {
                 if (line.type == VortexLineType::Trailing || line.type == VortexLineType::Shed)
                 {
-                    int _ = currentBladeWake.addLine({line.startNodeIdx, line.endNodeIdx, line.gamma, line.type});
+                    int lineIdx = currentBladeWake.addLine({line.startNodeIdx, line.endNodeIdx, line.gamma, line.type});
+                    VortexLine &newLine = currentBladeWake.lines.back();
+                    newLine.initial_gamma = line.initial_gamma; // 继承上一时间步的初始gamma
+                    newLine.in_far_wake = line.in_far_wake;     // 继承上一时间步的远场状态
                 }
             }
 
@@ -343,6 +455,9 @@ namespace fvw
                 int newLineIdx = currentBladeWake.addLine({startIdx, endIdx, initial_gamma[i], VortexLineType::Bound});
                 if (i < currentBladeWake.boundLineIndices.size())
                 {
+                    VortexLine &newLine = currentBladeWake.lines.back();
+                    newLine.initial_gamma = newLine.gamma;
+                    newLine.in_far_wake = false;
                     currentBladeWake.boundLineIndices[i] = newLineIdx;
                 }
                 else
@@ -367,6 +482,9 @@ namespace fvw
                 int newLineIdx = currentBladeWake.addLine({startIdx, endIdx, gamma_trail[i], VortexLineType::Trailing});
                 if (i < currentBladeWake.trailingLineIndices.size())
                 {
+                    VortexLine &newLine = currentBladeWake.lines.back();
+                    newLine.initial_gamma = newLine.gamma;
+                    newLine.in_far_wake = false;
                     currentBladeWake.trailingLineIndices[i] = newLineIdx;
                 }
                 else
@@ -385,6 +503,10 @@ namespace fvw
                 int newLineIdx = currentBladeWake.addLine({startIdx, endIdx, 0.0, VortexLineType::Shed});
                 if (i < currentBladeWake.shedLineIndices.size())
                 {
+                    VortexLine &newLine = currentBladeWake.lines.back();
+                    // Shed涡的强度在Kutta循环中确定，所以初始gamma可以为0
+                    newLine.initial_gamma = 0.0;
+                    newLine.in_far_wake = false;
                     currentBladeWake.shedLineIndices[i] = newLineIdx;
                 }
                 else
@@ -538,6 +660,7 @@ namespace fvw
                 double gamma_current = boundLine.gamma;
                 double dg = gamma_required - gamma_current;
                 boundLine.gamma = gamma_current + relaxationFactor * dg;
+                boundLine.initial_gamma = boundLine.gamma;
 
                 // 存储到 PerformanceData
                 perf.setBoundGammaAt(b, currentTimestep, i) = boundLine.gamma;
@@ -639,6 +762,7 @@ namespace fvw
                         std::cerr << "Error: Unexpected index i=" << i << " when updating trailing vortex for blade " << b << ", timestep " << currentTimestep << ". nTrail=" << wake.nTrail << std::endl;
                     }
                     trailingLine.gamma = gamma_trailing; // 更新 Trailing 涡线强度
+                    trailingLine.initial_gamma = trailingLine.gamma;
                 }
 
                 // Update Shed 涡线 (nShed 个)
@@ -685,6 +809,7 @@ namespace fvw
 
                     // Calculate Shed vortex line strength
                     shedLine.gamma = prev_gamma_bound - current_gamma_bound; // Note the sign convention
+                    shedLine.initial_gamma = shedLine.gamma;
 
                 } // 结束遍历 Shed 涡段
             }
@@ -706,6 +831,67 @@ namespace fvw
         // Kutta 循环结束后，所有涡线的强度已经更新。
         // 在主循环中，下一步应该是根据这些新的涡线强度，再次计算所有节点的诱导速度，
         // 然后更新节点位置，进入下一个时间步。
+    }
+
+
+    void ApplyGammaDecayAndRemoval(Wake& wake, int timestep, const TurbineParams& turbineParams, const SimParams& simParams) {
+        
+        // --- 1. 定义模型参数 ---
+        const double x_far_wake_D = 5.0; // 定义从下游5倍直径处开始衰减
+        const double x_far_wake_m = x_far_wake_D * turbineParams.rTip * 2.0;
+        
+        const double alpha = 0.05; // 耗散率系数α (这是一个需要你调整的关键参数!)
+        const double gamma_threshold_ratio = 0.01; // 当gamma衰减到初始值的1%时移除
+
+        // --- 2. 遍历所有叶片和涡线，应用衰减 ---
+        for (int b = 0; b < wake.nBlades; ++b) {
+            BladeWake& bladeWake = wake.getBladeWake(timestep, b);
+            
+            // a. 应用衰减
+            for (VortexLine& line : bladeWake.lines) {
+                // 附着涡不参与衰减
+                if (line.type == VortexLineType::Bound) continue;
+
+                if (line.in_far_wake) {
+                    line.gamma *= std::exp(-alpha * simParams.dt);
+                } 
+                else {
+                    const Vec3& p1 = bladeWake.nodes[line.startNodeIdx].position;
+                    const Vec3& p2 = bladeWake.nodes[line.endNodeIdx].position;
+                    double avg_x = (p1.x + p2.x) / 2.0;
+
+                    if (avg_x > x_far_wake_m) {
+                        line.in_far_wake = true; // 标记它进入了远场
+                    }
+                }
+            }
+
+            // b. 移除弱涡
+            auto& lines = bladeWake.lines;
+            auto original_size = lines.size();
+
+            // 使用C++ STL的 erase-remove idiom 高效地删除元素
+            lines.erase(
+                std::remove_if(lines.begin(), lines.end(), 
+                    [gamma_threshold_ratio](const VortexLine& line){
+                        if (!line.in_far_wake) return false; 
+                        
+                        if (std::abs(line.initial_gamma) < 1e-9) {
+                            // 对于初始强度就接近0的涡（如某些shed涡），直接判断其绝对强度
+                            return std::abs(line.gamma) < 1e-7; 
+                        }
+
+                        // 计算相对强度是否低于阈值
+                        return std::abs(line.gamma / line.initial_gamma) < gamma_threshold_ratio;
+                    }),
+                lines.end());
+                
+            if (original_size > lines.size()) {
+                std::cout << "  - Blade " << b << ": Removed " << original_size - lines.size() << " weak vortices from far-wake." << std::endl;
+            }
+        }
+        // 注意：移除涡线后，与之关联的节点会变成“孤儿”节点。在这个模型中，我们可以暂时容忍
+        // 这些孤儿节点的存在，因为它们不参与任何涡线的计算。一个更完整的实现需要垃圾回收机制。
     }
 
 } // namespace fvw
