@@ -1,5 +1,6 @@
 #include "position.h"
 #include <cmath>
+#include <iostream>
 
 namespace fvw
 {
@@ -181,21 +182,44 @@ namespace fvw
             aziOri[b] = b * aziStep;
         }
 
+        // 创建一个基础的、不含扰动的桨距角数组 (比如全为0)
+        std::vector<double> bladePitch(simParams.timesteps, 0.0);
+
+        // 如果开启了扰动，则在基础值上添加正弦波动
+        if (simParams.perturbation.type == PerturbationType::CollectivePitch)
+        {
+            std::cout << "--- Applying Collective Pitch Perturbation ---" << std::endl;
+            std::cout << "  - Amplitude: " << simParams.perturbation.amplitude_deg << " deg" << std::endl;
+            std::cout << "  - Frequency: " << simParams.perturbation.frequency_hz << " Hz" << std::endl;
+
+            // 将扰动参数转换为弧度单位
+            const double amplitude_rad = simParams.perturbation.amplitude_deg * M_PI / 180.0;
+            const double omega_perturb = 2.0 * M_PI * simParams.perturbation.frequency_hz;
+
+            for (int t = 0; t < simParams.timesteps; ++t)
+            {
+                double currentTime = t * simParams.dt;
+                double pitch_perturbation = amplitude_rad * std::sin(omega_perturb * currentTime);
+
+                // 将扰动量加到基础桨距角上 (这里假设基础值为0)
+                // 注意：这里是集体变桨，所以所有叶片在同一时刻的桨距角增量是相同的
+                bladePitch[t] += pitch_perturbation;
+            }
+        }
+
         // Rotation sequence
         std::string rseq = "zzzyxxyzxyz";
         std::vector<double> hubRotationSequence(4, 0.0);
-        std::vector<double> bladePitch(simParams.timesteps, 0.0);
 
         // Compute positions
         for (int b = 0; b < turbineParams.nBlades; ++b)
         {
-            std::vector<double> bladeRotseq = {90.0, bladePitch[0], 0.0, aziOri[b], 0.0, 0.0,
-                                               hubRotationSequence[0], hubRotationSequence[1],
-                                               hubRotationSequence[2], hubRotationSequence[3]};
-
             for (int t = 0; t < simParams.timesteps; ++t)
             {
-                bladeRotseq[4] = azimuth[t]; // Update azimuth
+                std::vector<double> bladeRotseq = {90.0, bladePitch[t], 0.0, aziOri[b], azimuth[t], 0.0,
+                                                   hubRotationSequence[0], hubRotationSequence[1],
+                                                   hubRotationSequence[2], hubRotationSequence[3]};
+
                 for (int i = 0; i < geom.lead.size(); ++i)
                 {
                     std::vector<double> totalRotseq = {geom.twistTrailing[i]};

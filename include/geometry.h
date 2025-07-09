@@ -13,6 +13,20 @@ namespace fvw
         // QBlade                  // 2: QBlade的、带物理扩散和拉伸的高级模型
     };
 
+    // 定义扰动类型
+    enum class PerturbationType {
+        None,               // 无扰动
+        CollectivePitch     // 集体变桨 (所有叶片同步)
+        // 未来可以扩展: CyclicPitch
+    };
+
+    // *** 定义扰动参数 ***
+    struct PerturbationParams {
+        PerturbationType type; // 默认无扰动
+        double amplitude_deg = 0.0; // 扰动幅值 (度)
+        double frequency_hz = 0.0;  // 扰动频率 (Hz)
+    };
+
     struct SimParams
     {
         double dt;
@@ -20,6 +34,7 @@ namespace fvw
         int timesteps;
         int outputFrequency;
         VortexModelType vortexModel;
+        PerturbationParams perturbation;
     };
 
     struct TurbineParams

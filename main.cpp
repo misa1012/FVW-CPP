@@ -43,6 +43,13 @@ int main(int argc, char *argv[])
     turbineParams.tsr = 7.0;
     turbineParams.omega = turbineParams.tsr * turbineParams.windSpeed / turbineParams.rTip;
 
+    // --- 扰动实验 ---
+    simParams.perturbation.type = fvw::PerturbationType::None;
+    simParams.perturbation.amplitude_deg = 2.0; // 扰动幅值：2度
+    // 将扰动频率设置为与涡轮旋转频率相关的值
+    double rotational_freq_hz = turbineParams.omega / (2.0 * M_PI);
+    simParams.perturbation.frequency_hz = 4.5*rotational_freq_hz; // 例如，扰动频率 = 4.5*涡轮旋转频率
+
     // Compute blade geometry
     auto geom = fvw::computeBladeGeometry(turbineParams);
     std::cout << "Blade geometry computed." << std::endl;
