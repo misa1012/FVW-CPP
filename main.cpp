@@ -27,8 +27,9 @@ int main(int argc, char *argv[])
     // Simulation parameters
     fvw::SimParams simParams;
     simParams.dt = 0.06;
-    simParams.totalTime = 120.0;
+    simParams.totalTime = 180.0;
     simParams.timesteps = static_cast<int>(simParams.totalTime / simParams.dt) + 1;
+    simParams.cutoffParam = 0.1;
     simParams.outputFrequency = 10;                           // 每10步输出一次HDF5
     simParams.vortexModel = fvw::VortexModelType::VanGarrel; // 选择vortex diffusion model
 

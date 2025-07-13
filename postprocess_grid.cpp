@@ -1,3 +1,5 @@
+// 用于把某一时刻的三维数据map到欧拉网格上
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -20,9 +22,9 @@ int main()
 {
 
     // --- 参数定义 ---
-    const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250708_GammaDecay_2000_cutoff_0_005/wake.h5";
-    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250708_GammaDecay_2000_cutoff_0_005/velocity_field_t2000_gamma_decay_non_uniform2.vtk";
-    const int timestep_to_process = 2000;
+    const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/wake.h5";
+    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250612_3000steps/velocity_field_t3000_0_1.vtk";
+    const int timestep_to_process = 3000;
     const double TURBINE_DIAMETER = 126.0;
 
     fvw::TurbineParams turbineParams;
@@ -59,7 +61,7 @@ int main()
 
     // 定义整个计算域的范围
     const double x_start_m = -1.0 * TURBINE_DIAMETER;
-    const double x_end_m = 10.0 * TURBINE_DIAMETER;
+    const double x_end_m = 3.0 * TURBINE_DIAMETER;
     const double y_max_m = 1.5 * TURBINE_DIAMETER / 2.0; // +/- 1.5R
     const double z_max_m = 1.5 * TURBINE_DIAMETER;       // 0 到 3R
 
@@ -119,7 +121,7 @@ int main()
     auto calc_start = std::chrono::high_resolution_clock::now();
 
     std::vector<fvw::Vec3> grid_velocities;
-    double cutOff = 0.005;
+    double cutOff = 0.1;
     fvw::computeInducedVelocity(grid_velocities, grid_points, wake_snapshot, timestep_to_process, turbineParams, cutOff);
 
     auto calc_end = std::chrono::high_resolution_clock::now();

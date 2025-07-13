@@ -33,6 +33,7 @@ namespace fvw
         double totalTime;
         int timesteps;
         int outputFrequency;
+        double cutoffParam;
         VortexModelType vortexModel;
         PerturbationParams perturbation;
     };

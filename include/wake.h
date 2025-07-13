@@ -183,7 +183,7 @@ namespace fvw
 
     // Biot-Savart function
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.005);
+                                const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff = 0.1);
 
     void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                                  const TurbineParams &turbineParams, const PositionData &pos, double dt);

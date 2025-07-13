@@ -1,3 +1,5 @@
+// 有了postprocess_probes是不是用不着这个了，存疑？
+
 #include "airfoil.h"
 #include "geometry.h"
 #include "position.h"
@@ -47,6 +49,8 @@ int main()
     simParams.dt = 0.06;
     simParams.totalTime = 6.0;
     simParams.timesteps = static_cast<int>(simParams.totalTime / simParams.dt) + 1;
+    simParams.cutoffParam = 0.05;
+
     // Turbine parameters
     fvw::TurbineParams turbineParams;
     turbineParams.windSpeed = 11.4;
@@ -147,7 +151,7 @@ int main()
         fvw::writeWakeToHDF5(wake, pos, perf, velICS, velBCS, turbineParams, "../results/wake.h5", t);
 
         // 5. 对某些点计算induced velocity并输出hdf5文件
-        fvw::computeInducedVelocity(vel_induced_results[t], observe_points, wake, t, turbineParams, 0.001);
+        fvw::computeInducedVelocity(vel_induced_results[t], observe_points, wake, t, turbineParams, simParams.cutoffParam);
         
         auto step_end = std::chrono::high_resolution_clock::now();
         auto step_duration = std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_start);

@@ -840,7 +840,7 @@ namespace fvw
         const double x_far_wake_D = 5.0; // 定义从下游5倍直径处开始衰减
         const double x_far_wake_m = x_far_wake_D * turbineParams.rTip * 2.0;
         
-        const double alpha = 0.05; // 耗散率系数α (这是一个需要你调整的关键参数!)
+        const double alpha = 0.2; // 耗散率系数α (这是一个需要你调整的关键参数!)
         const double gamma_threshold_ratio = 0.01; // 当gamma衰减到初始值的1%时移除
 
         // --- 2. 遍历所有叶片和涡线，应用衰减 ---
