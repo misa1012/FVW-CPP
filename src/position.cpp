@@ -192,17 +192,16 @@ namespace fvw
             std::cout << "  - Amplitude: " << simParams.perturbation.amplitude_deg << " deg" << std::endl;
             std::cout << "  - Frequency: " << simParams.perturbation.frequency_hz << " Hz" << std::endl;
 
-            // 将扰动参数转换为弧度单位
-            const double amplitude_rad = simParams.perturbation.amplitude_deg * M_PI / 180.0;
             const double omega_perturb = 2.0 * M_PI * simParams.perturbation.frequency_hz;
 
             for (int t = 0; t < simParams.timesteps; ++t)
             {
                 double currentTime = t * simParams.dt;
-                double pitch_perturbation = amplitude_rad * std::sin(omega_perturb * currentTime);
+                double pitch_perturbation = simParams.perturbation.amplitude_deg * std::sin(omega_perturb * currentTime);
 
                 // 将扰动量加到基础桨距角上 (这里假设基础值为0)
                 // 注意：这里是集体变桨，所以所有叶片在同一时刻的桨距角增量是相同的
+                // 其中，DCM的输入为度
                 bladePitch[t] += pitch_perturbation;
             }
         }

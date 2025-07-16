@@ -47,7 +47,7 @@ int main(int argc, char *argv[])
 
     // --- 扰动实验 ---
     simParams.perturbation.type = fvw::PerturbationType::CollectivePitch;
-    simParams.perturbation.amplitude_deg = 2.0; // 扰动幅值：2度
+    simParams.perturbation.amplitude_deg = 0.1; // 扰动幅值：度
     // 将扰动频率设置为与涡轮旋转频率相关的值
     double rotational_freq_hz = turbineParams.omega / (2.0 * M_PI);
     simParams.perturbation.frequency_hz = 4.5*rotational_freq_hz; // 例如，扰动频率 = 4.5*涡轮旋转频率
