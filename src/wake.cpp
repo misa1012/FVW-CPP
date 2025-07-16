@@ -9,84 +9,13 @@
 
 namespace fvw
 {
-    // void UpdateVortexStates(Wake& wake, int timestep, const SimParams& simParams, const TurbineParams& turbineParams) {
-    //     if (timestep == 0) return; // t=0 时不更新
-
-    //     for (int b = 0; b < wake.nBlades; ++b) {
-    //         BladeWake& currentBladeWake = wake.getBladeWake(timestep, b);
-
-    //         // --- 根据选择的模型，执行不同的更新逻辑 ---
-    //         switch (simParams.vortexModel) {
-    //             // case VortexModelType::QBlade:
-    //             // {
-    //             //     const double a = 1.25643;
-    //             //     const double kin_viscosity = 1.5e-5;
-    //             //     const double turbulent_viscosity = 50.0; // 可调参数
-
-    //             //     for (VortexLine& line : currentBladeWake.lines) {
-    //             //         if (line.type == VortexLineType::Bound) continue; // 附着涡不演化
-
-    //             //         line.age += simParams.dt;
-
-    //             //         const Vec3& p1 = currentBladeWake.nodes[line.startNodeIdx].position;
-    //             //         const Vec3& p2 = currentBladeWake.nodes[line.endNodeIdx].position;
-    //             //         double new_length = (p2 - p1).norm();
-
-    //             //         double strain = 0.0;
-    //             //         if (line.oldLength > 1e-9) {
-    //             //             strain = (new_length - line.oldLength) / line.oldLength;
-    //             //         }
-
-    //             //         line.core_radius_squared += 4 * a * (turbulent_viscosity + kin_viscosity) * simParams.dt;
-    //             //         if (1.0 + strain > 1e-9) {
-    //             //             line.core_radius_squared /= (1.0 + strain);
-    //             //         }
-    //             //         line.oldLength = new_length;
-    //             //     }
-    //             //     break;
-    //             // }
-    //             case VortexModelType::GammaDecay:
-    //             {
-    //                 const double x_far_wake_D = 5.0;
-    //                 const double x_far_wake_m = x_far_wake_D * turbineParams.rTip * 2.0;
-    //                 const double alpha = 0.05; // 耗散率，可调参数
-
-    //                 for (VortexLine& line : currentBladeWake.lines) {
-    //                     if (line.type == VortexLineType::Bound) continue;
-    //                     if (line.in_far_wake) {
-    //                         line.gamma *= std::exp(-alpha * simParams.dt);
-    //                     } else {
-    //                         const Vec3& p1 = currentBladeWake.nodes[line.startNodeIdx].position;
-    //                         if (p1.x > x_far_wake_m) {
-    //                             line.in_far_wake = true;
-    //                         }
-    //                     }
-    //                 }
-
-    //                 // 移除弱涡
-    //                 auto& lines = currentBladeWake.lines;
-    //                 const double gamma_threshold_ratio = 0.01;
-    //                 lines.erase(
-    //                     std::remove_if(lines.begin(), lines.end(),
-    //                         [gamma_threshold_ratio](const VortexLine& line){
-    //                             if (!line.in_far_wake) return false;
-    //                             return std::abs(line.gamma) < (gamma_threshold_ratio * std::abs(line.initial_gamma));
-    //                         }),
-    //                     lines.end());
-    //                 break;
-    //             }
-    //             case VortexModelType::VanGarrel:
-    //                 // 此模型是静态的，无需在此处更新
-    //                 break;
-    //         }
-    //     }
-    // }
-
     // Biot-Savart function
     // Optimize for blade structure
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const TurbineParams &turbineParams, double cutOff)
+                                const Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams)
     {
+        bool enableOpenMP = false;
+
         const size_t numTargetPoints = targetPoints.size(); // 缓存大小
         inducedVelocities.assign(numTargetPoints, Vec3(0.0, 0.0, 0.0));
 
@@ -97,10 +26,13 @@ namespace fvw
         }
 
         // 预计算
-        const double cutOffSquared = cutOff * cutOff;
-        const double four_pi = 4.0 * M_PI;
+        // const double cutOffSquared = cutOff * cutOff;
+        // double vortexCoreRadius = 0.1;
+        // double cut_l = vortexCoreRadius * vortexCoreRadius;
 
-#pragma omp parallel for
+        double four_pi = 4.0 * M_PI;
+
+#pragma omp parallel for if (enableOpenMP)
         for (size_t p_idx = 0; p_idx < numTargetPoints; ++p_idx)
         {
             const Vec3 &p = targetPoints[p_idx]; // 使用引用
@@ -127,42 +59,31 @@ namespace fvw
                     const Vec3 &x2 = nodes[line.endNodeIdx].position;
                     double gamma = line.gamma;
 
-                    // 更新vortex core
-                    // double rc_squared;
-                    // switch (simParams.vortexModel) {
-                    //     case VortexModelType::VanGarrel:
-                    //     {
-                    //         Vec3 l_vec = x2 - x1;
-                    //         rc_squared = cutOff * cutOff * l_vec.norm_squared();
-                    //         break;
-                    //     }
-                    //     case VortexModelType::QBlade:
-                    //     {
-                    //         rc_squared = line.core_radius_squared;
-                    //         break;
-                    //     }
-                    //     case VortexModelType::GammaDecay:
-                    //     {
-                    //         // 在这个模型中，我们主要关注gamma衰减，涡核模型可以复用简单的van Garrel
-                    //         Vec3 l_vec = x2 - x1;
-                    //         rc_squared = cutOff * cutOff * l_vec.norm_squared();
-                    //         break;
-                    //     }
-                    // }
-
-                    // --- 执行 Biot-Savart 计算 ---
-
-                    Vec3 l_vec = x2 - x1;
-                    double l_squared = l_vec.norm_squared();
-
-                    if (l_squared < 1e-12)
+                    // Vortex core model
+                    double cut_l;
+                    switch (simParams.coreType)
                     {
-                        std::cerr << "Warning: The line is smaller than 1e-12" << std::endl;
-                        continue; // 跳过长度为零的线段
+                    case VortexCoreType::VanGarrel:
+                    {
+                        Vec3 l_vec = x2 - x1;
+                        double l_squared = l_vec.norm_squared();
+                        if (l_squared < 1e-12)
+                        {
+                            std::cerr << "Warning: The line is smaller than 1e-12" << std::endl;
+                            continue; // 跳过长度为零的线段
+                        }
+                        cut_l = simParams.cutoffParam * simParams.cutoffParam * l_squared;
+                        break;
+                    }
+                    case VortexCoreType::ChordBasedCore:
+                    {
+                        // 现在尝试跟chord挂钩，但先不读取chord，都统一用0.1
+                        cut_l = simParams.cutoffParam * simParams.cutoffParam;
+                        break;
+                    }
                     }
 
-                    double cut_l = cutOffSquared * l_squared; // 使用预计算的平方
-                    double coeff = gamma / four_pi;           // 使用预计算的 M_PI
+                    double coeff = gamma / four_pi; // 使用预计算的 M_PI
 
                     Vec3 r1 = p - x1;
                     Vec3 r2 = p - x2;
@@ -176,7 +97,6 @@ namespace fvw
 
                     double factor = coeff * (r1_norm + r2_norm) / denominator;
 
-                    // total_vel_at_p = total_vel_at_p + cross_r1_r2 * factor;
                     total_vel_at_p.x += cross_r1_r2.x * factor;
                     total_vel_at_p.y += cross_r1_r2.y * factor;
                     total_vel_at_p.z += cross_r1_r2.z * factor;
@@ -191,7 +111,7 @@ namespace fvw
     // The first wake
     // 初始化 t=0 时刻的尾迹结构 (附着涡 + 第一层脱落涡)
     void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
-                                 const TurbineParams &turbineParams, const PositionData &pos, double dt)
+                                 const TurbineParams &turbineParams, const PositionData &pos, const SimParams &simParams)
     {
         bool if_verbose = false;
 
@@ -297,12 +217,12 @@ namespace fvw
 
         // --- 计算 t=0 节点的初始速度 (诱导速度 + 自由流) ---
         std::cout << "Computing initial velocities for t=0 nodes..." << std::endl;
-        UpdateWakeVelocities(wake, turbineParams, 0);
+        UpdateWakeVelocities(wake, turbineParams, 0, simParams);
     }
 
     // ------------------------
     // 该函数主要是在调用Biot-savart law，根据gamma计算每个点的速度
-    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep)
+    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep, const SimParams &simParams)
     {
         // 计算诱导速度，叠加到节点速度
         Vec3 initialFreeStreamVel = Vec3(turbineParams.windSpeed, 0.0, 0.0);
@@ -328,7 +248,7 @@ namespace fvw
 
         // 2. 计算这些目标点的诱导速度
         std::vector<Vec3> inducedVelocities;
-        computeInducedVelocity(inducedVelocities, allNodePositions, wake, timestep, turbineParams);
+        computeInducedVelocity(inducedVelocities, allNodePositions, wake, timestep, turbineParams, simParams);
 
         // 3. 更新 Wake 结构中对应节点的 velocity
         if (inducedVelocities.size() != allNodePositions.size())
@@ -526,7 +446,7 @@ namespace fvw
     // Kutta循环 update vortex strength
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,
-                                 std::vector<AirfoilData> &airfoils)
+                                 std::vector<AirfoilData> &airfoils, const SimParams &simParams)
     {
         const int maxIterations = 200;
         const double convergenceThreshold = 1e-4;
@@ -593,7 +513,7 @@ namespace fvw
             // 诱导速度来自整个尾迹结构 (所有时间步，所有叶片的所有涡线)
             std::vector<Vec3> inducedVelocities;
             // computeInducedVelocity 函数已经设计为计算整个 Wake 在目标点上的诱导速度
-            computeInducedVelocity(inducedVelocities, controlPointPositions, wake, currentTimestep, turbineParams);
+            computeInducedVelocity(inducedVelocities, controlPointPositions, wake, currentTimestep, turbineParams, simParams);
 
             // --- 3. 计算有效速度，攻角，所需的附着涡强度，并更新附着涡 ---
 
@@ -833,60 +753,70 @@ namespace fvw
         // 然后更新节点位置，进入下一个时间步。
     }
 
+    void ApplyGammaDecayAndRemoval(Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams)
+    {
 
-    void ApplyGammaDecayAndRemoval(Wake& wake, int timestep, const TurbineParams& turbineParams, const SimParams& simParams) {
-        
         // --- 1. 定义模型参数 ---
         const double x_far_wake_D = 5.0; // 定义从下游5倍直径处开始衰减
         const double x_far_wake_m = x_far_wake_D * turbineParams.rTip * 2.0;
-        
-        const double alpha = 0.2; // 耗散率系数α (这是一个需要你调整的关键参数!)
+
+        const double alpha = 0.2;                  // 耗散率系数α (这是一个需要你调整的关键参数!)
         const double gamma_threshold_ratio = 0.01; // 当gamma衰减到初始值的1%时移除
 
         // --- 2. 遍历所有叶片和涡线，应用衰减 ---
-        for (int b = 0; b < wake.nBlades; ++b) {
-            BladeWake& bladeWake = wake.getBladeWake(timestep, b);
-            
-            // a. 应用衰减
-            for (VortexLine& line : bladeWake.lines) {
-                // 附着涡不参与衰减
-                if (line.type == VortexLineType::Bound) continue;
+        for (int b = 0; b < wake.nBlades; ++b)
+        {
+            BladeWake &bladeWake = wake.getBladeWake(timestep, b);
 
-                if (line.in_far_wake) {
+            // a. 应用衰减
+            for (VortexLine &line : bladeWake.lines)
+            {
+                // 附着涡不参与衰减
+                if (line.type == VortexLineType::Bound)
+                    continue;
+
+                if (line.in_far_wake)
+                {
                     line.gamma *= std::exp(-alpha * simParams.dt);
-                } 
-                else {
-                    const Vec3& p1 = bladeWake.nodes[line.startNodeIdx].position;
-                    const Vec3& p2 = bladeWake.nodes[line.endNodeIdx].position;
+                }
+                else
+                {
+                    const Vec3 &p1 = bladeWake.nodes[line.startNodeIdx].position;
+                    const Vec3 &p2 = bladeWake.nodes[line.endNodeIdx].position;
                     double avg_x = (p1.x + p2.x) / 2.0;
 
-                    if (avg_x > x_far_wake_m) {
+                    if (avg_x > x_far_wake_m)
+                    {
                         line.in_far_wake = true; // 标记它进入了远场
                     }
                 }
             }
 
             // b. 移除弱涡
-            auto& lines = bladeWake.lines;
+            auto &lines = bladeWake.lines;
             auto original_size = lines.size();
 
             // 使用C++ STL的 erase-remove idiom 高效地删除元素
             lines.erase(
-                std::remove_if(lines.begin(), lines.end(), 
-                    [gamma_threshold_ratio](const VortexLine& line){
-                        if (!line.in_far_wake) return false; 
-                        
-                        if (std::abs(line.initial_gamma) < 1e-9) {
-                            // 对于初始强度就接近0的涡（如某些shed涡），直接判断其绝对强度
-                            return std::abs(line.gamma) < 1e-7; 
-                        }
+                std::remove_if(lines.begin(), lines.end(),
+                               [gamma_threshold_ratio](const VortexLine &line)
+                               {
+                                   if (!line.in_far_wake)
+                                       return false;
 
-                        // 计算相对强度是否低于阈值
-                        return std::abs(line.gamma / line.initial_gamma) < gamma_threshold_ratio;
-                    }),
+                                   if (std::abs(line.initial_gamma) < 1e-9)
+                                   {
+                                       // 对于初始强度就接近0的涡（如某些shed涡），直接判断其绝对强度
+                                       return std::abs(line.gamma) < 1e-7;
+                                   }
+
+                                   // 计算相对强度是否低于阈值
+                                   return std::abs(line.gamma / line.initial_gamma) < gamma_threshold_ratio;
+                               }),
                 lines.end());
-                
-            if (original_size > lines.size()) {
+
+            if (original_size > lines.size())
+            {
                 std::cout << "  - Blade " << b << ": Removed " << original_size - lines.size() << " weak vortices from far-wake." << std::endl;
             }
         }

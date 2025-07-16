@@ -43,10 +43,14 @@ int main() {
     int end_step = 2000;
     int step_interval = 10;
     double dt = 0.06;
-    double cutOff = 0.005;    // Biot-Savart的cutOff参数
+    fvw::SimParams simParams;
+    simParams.coreType = fvw::VortexCoreType::VanGarrel;
+    simParams.cutoffParam = 0.1;    // Biot-Savart的cutOff参数
+    simParams.vortexModel = fvw::VortexModelType::Constant;
     
     // 创建一个Wake对象，它将在循环中被重复填充
-    fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
+    fvw::Wake wake(turbineParams.nBla
+        des, turbineParams.nSegments, turbineParams.nSegments + 1);
 
     for (int t = start_step; t <= end_step; t += step_interval) {
         std::cout << "正在处理时间步: " << t << "..." << std::endl;
@@ -56,7 +60,7 @@ int main() {
 
         // 6. 调用你的函数，一次性计算所有探针点的诱导速度
         std::vector<fvw::Vec3> induced_velocities_at_probes;
-        fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, turbineParams, cutOff);
+        fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, turbineParams, simParams);
 
         // 7. 将结果写入CSV文件
         for (size_t i = 0; i < probe_points.size(); ++i) {

@@ -6,11 +6,16 @@
 
 namespace fvw
 {
-    // 定义涡核模型的类型
+    // 定义涡量模型的类型
     enum class VortexModelType {
-        VanGarrel,              // 0: 原始的、基于l0的平滑模型
+        Constant,              // 0: 原始的、保持涡量不变
         GammaDecay,             // 1: Gamma人工耗散+移除模型
-        // QBlade                  // 2: QBlade的、带物理扩散和拉伸的高级模型
+    };
+
+    // 定义涡核
+    enum class VortexCoreType {
+        VanGarrel,              // 0: 原始的、基于l0的平滑模型
+        ChordBasedCore,             // 1: Gamma人工耗散+移除模型
     };
 
     // 定义扰动类型
@@ -35,6 +40,7 @@ namespace fvw
         int outputFrequency;
         double cutoffParam;
         VortexModelType vortexModel;
+        VortexCoreType coreType;
         PerturbationParams perturbation;
     };
 
