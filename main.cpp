@@ -46,7 +46,7 @@ int main(int argc, char *argv[])
     turbineParams.omega = turbineParams.tsr * turbineParams.windSpeed / turbineParams.rTip;
 
     // --- 扰动实验 ---
-    simParams.perturbation.type = fvw::PerturbationType::CollectivePitch;
+    simParams.perturbation.type = fvw::PerturbationType::AsymmetricStaticPitch;
     simParams.perturbation.amplitude_deg = 0.1; // 扰动幅值：度
     // 将扰动频率设置为与涡轮旋转频率相关的值
     double rotational_freq_hz = turbineParams.omega / (2.0 * M_PI);

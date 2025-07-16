@@ -183,16 +183,19 @@ namespace fvw
         }
 
         // 创建一个基础的、不含扰动的桨距角数组 (比如全为0)
-        std::vector<double> bladePitch(simParams.timesteps, 0.0);
+        std::vector<std::vector<double>> blade_pitches(simParams.timesteps, std::vector<double>(turbineParams.nBlades, 0.0));
 
         // 如果开启了扰动，则在基础值上添加正弦波动
-        if (simParams.perturbation.type == PerturbationType::CollectivePitch)
+        switch (simParams.perturbation.type)
         {
+        case PerturbationType::CollectivePitch:
+        {
+            // 注意：这里是集体变桨，所以所有叶片在同一时刻的桨距角增量是相同的
             std::cout << "--- Applying Collective Pitch Perturbation ---" << std::endl;
             std::cout << "  - Amplitude: " << simParams.perturbation.amplitude_deg << " deg" << std::endl;
             std::cout << "  - Frequency: " << simParams.perturbation.frequency_hz << " Hz" << std::endl;
 
-            const double omega_perturb = 2.0 * M_PI * simParams.perturbation.frequency_hz;
+            double omega_perturb = 2.0 * M_PI * simParams.perturbation.frequency_hz;
 
             for (int t = 0; t < simParams.timesteps; ++t)
             {
@@ -200,10 +203,51 @@ namespace fvw
                 double pitch_perturbation = simParams.perturbation.amplitude_deg * std::sin(omega_perturb * currentTime);
 
                 // 将扰动量加到基础桨距角上 (这里假设基础值为0)
-                // 注意：这里是集体变桨，所以所有叶片在同一时刻的桨距角增量是相同的
                 // 其中，DCM的输入为度
-                bladePitch[t] += pitch_perturbation;
+                for (int b = 0; b < turbineParams.nBlades; ++b)
+                {
+                    blade_pitches[t][b] = pitch_perturbation;
+                }
             }
+        }
+        break;
+        case PerturbationType::AsymmetricStaticPitch:
+        {
+            std::cout << "--- Applying Asymmetric Static Pitch Perturbation ---" << std::endl;
+            std::cout << "  - Delta Alpha: " << simParams.perturbation.amplitude_deg << " deg" << std::endl;
+
+            std::vector<double> pitch_offsets_rad(turbineParams.nBlades);
+
+            // 假设3个叶片：一个为0，一个为+delta, 一个为-delta
+            if (turbineParams.nBlades == 3)
+            {
+                pitch_offsets_rad[0] = 0.0;
+                pitch_offsets_rad[1] = simParams.perturbation.amplitude_deg;
+                pitch_offsets_rad[2] = -simParams.perturbation.amplitude_deg;
+            }
+            else
+            {
+                std::cerr << "[Error] Blade number mismatch: Asymmetric Static Pitch requires 3 blades." << std::endl;
+                for (int b = 0; b < turbineParams.nBlades; ++b)
+                {
+                    pitch_offsets_rad[b] = simParams.perturbation.amplitude_deg * std::sin(b * 2.0 * M_PI / turbineParams.nBlades);
+                }
+            }
+
+            // 将这个固定的偏移量应用到所有时间步
+            for (int t = 0; t < simParams.timesteps; ++t)
+            {
+                for (int b = 0; b < turbineParams.nBlades; ++b)
+                {
+                    blade_pitches[t][b] = pitch_offsets_rad[b];
+                }
+            }
+            break;
+        }
+        case PerturbationType::None:
+        default:
+            // 默认情况下，所有桨距角都为0，无需操作
+            break;
         }
 
         // Rotation sequence
@@ -215,7 +259,7 @@ namespace fvw
         {
             for (int t = 0; t < simParams.timesteps; ++t)
             {
-                std::vector<double> bladeRotseq = {90.0, bladePitch[t], 0.0, aziOri[b], azimuth[t], 0.0,
+                std::vector<double> bladeRotseq = {90.0, blade_pitches[t][b], 0.0, aziOri[b], azimuth[t], 0.0,
                                                    hubRotationSequence[0], hubRotationSequence[1],
                                                    hubRotationSequence[2], hubRotationSequence[3]};
 

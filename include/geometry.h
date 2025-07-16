@@ -21,8 +21,8 @@ namespace fvw
     // 定义扰动类型
     enum class PerturbationType {
         None,               // 无扰动
-        CollectivePitch     // 集体变桨 (所有叶片同步)
-        // 未来可以扩展: CyclicPitch
+        CollectivePitch,     // 集体变桨 (所有叶片同步)
+        AsymmetricStaticPitch   // 非对称固定变桨 
     };
 
     // *** 定义扰动参数 ***
