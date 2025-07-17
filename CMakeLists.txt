@@ -9,7 +9,7 @@ option(ENABLE_PROFILING "Enable gprof profiling" OFF)
 # Executable options
 option(BUILD_FVW_CPP "Build fvw_cpp executable" ON)
 option(BUILD_POSTPROCESS_PROBES "Build postprocess_probes executable" OFF)
-option(BUILD_POSTPROCESS_GRID "Build postprocess_grid executable" ON)
+option(BUILD_POSTPROCESS_GRID "Build postprocess_grid executable" OFF)
 
 # ----------------------------------------
 find_package(HDF5 REQUIRED COMPONENTS CXX)

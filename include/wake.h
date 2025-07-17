@@ -38,6 +38,9 @@ namespace fvw
         // --- For Gamma Decay Model ---
         double initial_gamma; // 涡元诞生时的初始环量
         bool in_far_wake;     // 是否已进入远场开始衰减的标志
+
+        // For chord base vortex core
+        int segment_index;
     };
 
     // --- 单个叶片在一个时间步的尾迹信息 ---
@@ -178,12 +181,12 @@ namespace fvw
 
     // Biot-Savart function
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams);
+                                const Wake &wake, int timestep, const TurbineParams &turbineParams, const BladeGeometry &geom, const SimParams &simParams);
 
     void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                                  const TurbineParams &turbineParams, const PositionData &pos, const SimParams &simParams);
 
-    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep, const SimParams &simParams);
+    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep, const BladeGeometry &geom, const SimParams &simParams);
 
     void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom,
                               const TurbineParams &turbineParams, const PositionData &pos, double dt, int currentTimestep);

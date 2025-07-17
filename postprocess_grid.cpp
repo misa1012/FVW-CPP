@@ -28,8 +28,18 @@ int main()
 
     // 涡尾流和涡机参数
     fvw::TurbineParams turbineParams;
+    turbineParams.windSpeed = 11.4;
+    turbineParams.rho = 1.23;
+    turbineParams.rHub = 1.5;
+    turbineParams.rTip = 63.0;
     turbineParams.nBlades = 3;
     turbineParams.nSegments = 18;
+    turbineParams.tsr = 7.0;
+    turbineParams.omega = turbineParams.tsr * turbineParams.windSpeed / turbineParams.rTip;
+
+    // Compute blade geometry
+    auto geom = fvw::computeBladeGeometry(turbineParams);
+    std::cout << "Blade geometry computed." << std::endl;
 
     // 网格参数选择
     const bool use_uniform_grid = true; // true: 均匀网格，false: 非均匀网格
@@ -38,7 +48,7 @@ int main()
     // 网格范围设置
     const double x_start_m = -1.0 * TURBINE_DIAMETER;
     const double x_end_m = 3.0 * TURBINE_DIAMETER;
-    const double y_max_m = 0.2 * TURBINE_DIAMETER / 2.0;
+    const double y_max_m = 1.5 * TURBINE_DIAMETER / 2.0;
     const double z_max_m = 1.5 * TURBINE_DIAMETER / 2.0;  // 竖直方向
     
     // 高分辨率盒子（用于非均匀网格）
@@ -103,7 +113,7 @@ int main()
     simParams.coreType = fvw::VortexCoreType::VanGarrel;
     simParams.cutoffParam = 0.1;    // Biot-Savart的cutOff参数
     simParams.vortexModel = fvw::VortexModelType::Constant;
-    fvw::computeInducedVelocity(grid_velocities, grid_points, wake_snapshot, timestep_to_process, turbineParams, simParams);
+    fvw::computeInducedVelocity(grid_velocities, grid_points, wake_snapshot, timestep_to_process, turbineParams, geom, simParams);
 
     auto calc_end = std::chrono::high_resolution_clock::now();
     auto duration = std::chrono::duration_cast<std::chrono::seconds>(calc_end - calc_start);

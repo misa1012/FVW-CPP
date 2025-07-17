@@ -12,9 +12,14 @@ namespace fvw
     // Biot-Savart function
     // Optimize for blade structure
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams)
+                                const Wake &wake, int timestep, const TurbineParams &turbineParams, const BladeGeometry &geom, const SimParams &simParams)
     {
-        bool enableOpenMP = false;
+        bool enableOpenMP =
+#ifdef NDEBUG
+            true;
+#else
+            false;
+#endif
 
         const size_t numTargetPoints = targetPoints.size(); // 缓存大小
         inducedVelocities.assign(numTargetPoints, Vec3(0.0, 0.0, 0.0));
@@ -24,11 +29,6 @@ namespace fvw
             std::cerr << "Warning: Trying to compute induced velocity for an invalid or empty timestep: " << timestep << std::endl;
             return; // 或者抛出异常
         }
-
-        // 预计算
-        // const double cutOffSquared = cutOff * cutOff;
-        // double vortexCoreRadius = 0.1;
-        // double cut_l = vortexCoreRadius * vortexCoreRadius;
 
         double four_pi = 4.0 * M_PI;
 
@@ -60,7 +60,7 @@ namespace fvw
                     double gamma = line.gamma;
 
                     // Vortex core model
-                    double cut_l;
+                    double smoothing_term;
                     switch (simParams.coreType)
                     {
                     case VortexCoreType::VanGarrel:
@@ -72,13 +72,53 @@ namespace fvw
                             std::cerr << "Warning: The line is smaller than 1e-12" << std::endl;
                             continue; // 跳过长度为零的线段
                         }
-                        cut_l = simParams.cutoffParam * simParams.cutoffParam * l_squared;
+                        smoothing_term = simParams.cutoffParam * simParams.cutoffParam * l_squared;
                         break;
                     }
                     case VortexCoreType::ChordBasedCore:
                     {
-                        // 现在尝试跟chord挂钩，但先不读取chord，都统一用0.1
-                        cut_l = simParams.cutoffParam * simParams.cutoffParam;
+                        // 跟local chord挂钩
+                        int segment_idx = line.segment_index;
+                        double chord_local = 0.0;
+                        if (line.type == VortexLineType::Bound || line.type == VortexLineType::Shed)
+                        {
+                            // 对于附着涡(Bound)和脱落涡(Shed)，它们与叶片上的“叶素分段”直接相关。
+                            // 因此，使用在分段中心定义的 chordShedding 是物理上最合理的。
+                            if (segment_idx >= 0 && segment_idx < geom.chordShedding.size())
+                            {
+                                chord_local = geom.chordShedding[segment_idx];
+                            }
+                            else
+                            {
+                                // 如果索引无效（例如，对于从旧代码继承的、没有索引的远场shed涡），使用一个平均值作为后备。
+                                chord_local = 3.0; // 假设的平均弦长
+                            }
+                        }
+                        else if (line.type == VortexLineType::Trailing)
+                        {
+                            // 对于尾迹涡(Trailing)，它们是从叶片后缘的“节点”上脱落的。
+                            // 因此，使用在后缘节点上定义的 chordTrailing 更为精确。
+                            // 在你的结构中，trailing line的segment_index对应于它所连接的后缘节点的索引。
+                            if (segment_idx >= 0 && segment_idx < geom.chordTrailing.size())
+                            {
+                                chord_local = geom.chordTrailing[segment_idx];
+                            }
+                            else
+                            {
+                                // 后备方案
+                                chord_local = 3.0;
+                            }
+                        }
+                        else
+                        {
+                            // 为未知类型的涡线提供一个默认值
+                            chord_local = 3.0;
+                        }
+                        smoothing_term = simParams.cutoffParam * simParams.cutoffParam * chord_local * chord_local;
+                        // std::cout << "SegIdx: " << segment_idx
+                        //           << ", Chord: " << chord_local
+                        //           << ", SmoothingTerm: " << smoothing_term
+                        //           << std::endl;
                         break;
                     }
                     }
@@ -93,7 +133,7 @@ namespace fvw
                     double dot_r1_r2 = r1.dot(r2);
                     Vec3 cross_r1_r2 = r1.cross(r2);
 
-                    double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + cut_l;
+                    double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + smoothing_term;
 
                     double factor = coeff * (r1_norm + r2_norm) / denominator;
 
@@ -174,6 +214,7 @@ namespace fvw
                 VortexLine &newLine = currentBladeWake.lines.back();
                 newLine.initial_gamma = newLine.gamma;
                 newLine.in_far_wake = false;
+                newLine.segment_index = i;
                 currentBladeWake.boundLineIndices[i] = lineIdx;
             }
 
@@ -187,6 +228,7 @@ namespace fvw
                 VortexLine &newLine = currentBladeWake.lines.back();
                 newLine.initial_gamma = newLine.gamma;
                 newLine.in_far_wake = false;
+                newLine.segment_index = i;
                 currentBladeWake.trailingLineIndices[i] = lineIdx;
             }
 
@@ -200,6 +242,7 @@ namespace fvw
                 VortexLine &newLine = currentBladeWake.lines.back();
                 newLine.initial_gamma = newLine.gamma;
                 newLine.in_far_wake = false;
+                newLine.segment_index = i;
                 currentBladeWake.shedLineIndices[i] = lineIdx;
             }
         }
@@ -217,12 +260,12 @@ namespace fvw
 
         // --- 计算 t=0 节点的初始速度 (诱导速度 + 自由流) ---
         std::cout << "Computing initial velocities for t=0 nodes..." << std::endl;
-        UpdateWakeVelocities(wake, turbineParams, 0, simParams);
+        UpdateWakeVelocities(wake, turbineParams, 0, geom, simParams);
     }
 
     // ------------------------
     // 该函数主要是在调用Biot-savart law，根据gamma计算每个点的速度
-    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep, const SimParams &simParams)
+    void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep, const BladeGeometry &geom, const SimParams &simParams)
     {
         // 计算诱导速度，叠加到节点速度
         Vec3 initialFreeStreamVel = Vec3(turbineParams.windSpeed, 0.0, 0.0);
@@ -248,7 +291,7 @@ namespace fvw
 
         // 2. 计算这些目标点的诱导速度
         std::vector<Vec3> inducedVelocities;
-        computeInducedVelocity(inducedVelocities, allNodePositions, wake, timestep, turbineParams, simParams);
+        computeInducedVelocity(inducedVelocities, allNodePositions, wake, timestep, turbineParams, geom, simParams);
 
         // 3. 更新 Wake 结构中对应节点的 velocity
         if (inducedVelocities.size() != allNodePositions.size())
@@ -352,6 +395,7 @@ namespace fvw
                     VortexLine &newLine = currentBladeWake.lines.back();
                     newLine.initial_gamma = line.initial_gamma; // 继承上一时间步的初始gamma
                     newLine.in_far_wake = line.in_far_wake;     // 继承上一时间步的远场状态
+                    newLine.segment_index = line.segment_index;
                 }
             }
 
@@ -378,6 +422,7 @@ namespace fvw
                     VortexLine &newLine = currentBladeWake.lines.back();
                     newLine.initial_gamma = newLine.gamma;
                     newLine.in_far_wake = false;
+                    newLine.segment_index = i;
                     currentBladeWake.boundLineIndices[i] = newLineIdx;
                 }
                 else
@@ -405,6 +450,7 @@ namespace fvw
                     VortexLine &newLine = currentBladeWake.lines.back();
                     newLine.initial_gamma = newLine.gamma;
                     newLine.in_far_wake = false;
+                    newLine.segment_index = i;
                     currentBladeWake.trailingLineIndices[i] = newLineIdx;
                 }
                 else
@@ -427,6 +473,7 @@ namespace fvw
                     // Shed涡的强度在Kutta循环中确定，所以初始gamma可以为0
                     newLine.initial_gamma = 0.0;
                     newLine.in_far_wake = false;
+                    newLine.segment_index = i;
                     currentBladeWake.shedLineIndices[i] = newLineIdx;
                 }
                 else
@@ -513,7 +560,7 @@ namespace fvw
             // 诱导速度来自整个尾迹结构 (所有时间步，所有叶片的所有涡线)
             std::vector<Vec3> inducedVelocities;
             // computeInducedVelocity 函数已经设计为计算整个 Wake 在目标点上的诱导速度
-            computeInducedVelocity(inducedVelocities, controlPointPositions, wake, currentTimestep, turbineParams, simParams);
+            computeInducedVelocity(inducedVelocities, controlPointPositions, wake, currentTimestep, turbineParams, geom, simParams);
 
             // --- 3. 计算有效速度，攻角，所需的附着涡强度，并更新附着涡 ---
 

@@ -7,6 +7,27 @@
 // --nodeType=type: 指定节点类型（position）。
 // --save-csv: 保存 CSV 文件。
 
+// 解析验证参数
+// 目前已从main.cpp中删去
+// auto valParams = fvw::parseValidationArgs(argc, argv);
+// 验证 geometry（如果需要）
+// if (!valParams.section.empty() &&
+//     (valParams.section == "all" || valParams.section == "geometry"))
+// {
+//     fvw::ValidationParams geomParams = valParams;
+//     geomParams.section = "geometry"; // 仅验证 geometry
+//     fvw::validate(geomParams, simParams, turbineParams, geom, pos);
+// }
+
+// // 验证 position（如果需要）
+// if (!valParams.section.empty() &&
+//     (valParams.section == "all" || valParams.section == "position"))
+// {
+//     fvw::ValidationParams posParams = valParams;
+//     posParams.section = "position"; // 仅验证 position
+//     fvw::validate(posParams, simParams, turbineParams, geom, pos);
+// }
+
 #include "../include/validate.h"
 #include "../include/validate_geometry.h"
 #include "../include/validate_position.h"
