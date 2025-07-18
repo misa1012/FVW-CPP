@@ -12,6 +12,7 @@ namespace fvw
         cd.resize(nBlades * nTimesteps * nShed);
         inducedVelocity.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
         inducedVelocityICS.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
+        relativeVelocity.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0}); 
         boundGamma.resize(nBlades_ * nTimesteps * nShed_, 0.0);
     }
 
@@ -62,6 +63,16 @@ namespace fvw
     Vec3 &PerformanceData::setInducedVelocityICSAt(int b, int t, int i)
     {
         return inducedVelocityICS[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    const Vec3 &PerformanceData::relativeVelocityAt(int b, int t, int i) const
+    {
+        return relativeVelocity[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    Vec3 &PerformanceData::setRelativeVelocityAt(int b, int t, int i)
+    {
+        return relativeVelocity[b * nTimesteps * nShed + t * nShed + i];
     }
 
 } // namespace fvw

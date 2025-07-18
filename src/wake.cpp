@@ -588,12 +588,13 @@ namespace fvw
                 uind_blade_frame.y = byn.dot(uind); // 垂直于弦方向的分量 (影响攻角)
                 uind_blade_frame.z = bzn.dot(uind); // 沿径向的分量
 
-                // 存储诱导速度
-                perf.setInducedVelocityICSAt(b, currentTimestep, i) = uind;
-                perf.setInducedVelocityAt(b, currentTimestep, i) = uind_blade_frame;
-
                 // 计算有效速度 (在叶片坐标系下)
                 Vec3 vel_eff_blade_frame = velBCS.at(b, currentTimestep, i) + uind_blade_frame;
+
+                // 存储诱导速度
+                // perf.setInducedVelocityICSAt(b, currentTimestep, i) = uind;
+                // perf.setInducedVelocityAt(b, currentTimestep, i) = uind_blade_frame;
+                perf.setRelativeVelocityAt(b, currentTimestep, i) = vel_eff_blade_frame;
 
                 // 计算有效速度的模长
                 double Vinf_eff_squared = vel_eff_blade_frame.x * vel_eff_blade_frame.x +

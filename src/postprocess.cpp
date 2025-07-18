@@ -208,7 +208,22 @@ namespace fvw
                 }
                 perfDataset.write(&perfData[0], H5::PredType::NATIVE_DOUBLE);
 
-                // // 4. 写入诱导速度数据 (u, v, w)
+                // 写入relative velocity
+                hsize_t velDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3};
+                H5::DataSpace velSpace(2, velDims);
+                H5::DataSet relativeBcsDataset = liftingBladeGroup.createDataSet("relative_velocity_bcs", H5::PredType::NATIVE_DOUBLE, velSpace);
+
+                std::vector<double> relativeBcsData(turbineParams.nSegments * 3);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    const Vec3 &velocity = perf.relativeVelocityAt(b, timestep, i);
+                    relativeBcsData[i * 3 + 0] = velocity.x;
+                    relativeBcsData[i * 3 + 1] = velocity.y;
+                    relativeBcsData[i * 3 + 2] = velocity.z;
+                }
+                relativeBcsDataset.write(relativeBcsData.data(), H5::PredType::NATIVE_DOUBLE);
+
+                // 4. 写入诱导速度数据 (u, v, w)
                 // H5::Group inducedVelGroup = liftingBladeGroup.createGroup("induced_velocity");
 
                 // hsize_t inducedVelDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, (u,v,w)]

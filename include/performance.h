@@ -17,6 +17,7 @@ namespace fvw
         std::vector<double> cd;               // 阻力系数
         std::vector<Vec3> inducedVelocity;    // 诱导速度 (叶片坐标系, u, v, w)
         std::vector<Vec3> inducedVelocityICS; // 诱导速度 (惯性坐标系)
+        std::vector<Vec3> relativeVelocity;
         std::vector<double> boundGamma;       // Bound vortex strength (Gamma)
         int nBlades, nTimesteps, nShed;
 
@@ -29,6 +30,7 @@ namespace fvw
         const double &cdAt(int b, int t, int i) const;
         const Vec3 &inducedVelocityAt(int b, int t, int i) const;
         const Vec3 &inducedVelocityICSAt(int b, int t, int i) const;
+        const Vec3 &relativeVelocityAt(int b, int t, int i) const;
 
         // 可写访问器
         double &setAoaAt(int b, int t, int i);
@@ -36,6 +38,7 @@ namespace fvw
         double &setCdAt(int b, int t, int i);
         Vec3 &setInducedVelocityAt(int b, int t, int i);
         Vec3 &setInducedVelocityICSAt(int b, int t, int i);
+        Vec3 &setRelativeVelocityAt(int b, int t, int i);
 
         // Getter 方法
         int getTimesteps() const { return nTimesteps; }
