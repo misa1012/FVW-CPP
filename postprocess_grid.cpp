@@ -20,9 +20,9 @@ void write_field_to_vtk(const std::string &filename,
 int main()
 {
     // ===================== 参数设置 =====================
-    const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250715_cut_off_chord_3000/wake.h5";
-    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250715_cut_off_chord_3000/velocity_field_chord_t2850_0_1.vtk";
-    const int timestep_to_process = 2850;
+    const std::string h5_filepath = "/home/shug8104/sa/vortex/postprocess/20250727_01_chord_base_cutoff_study/0_1/wake.h5";
+    const std::string vtk_filepath = "/home/shug8104/sa/vortex/postprocess/20250727_01_chord_base_cutoff_study/0_1/velocity_field_chord_t1000_0_1.vtk";
+    const int timestep_to_process = 1000;
     const double TURBINE_DIAMETER = 126.0;
     const double hub_height = 90.0;
 
@@ -42,16 +42,16 @@ int main()
     std::cout << "Blade geometry computed." << std::endl;
 
     // 网格参数选择
-    const bool use_uniform_grid = true; // true: 均匀网格，false: 非均匀网格
-    const double res_high_m = 1.0;
+    const bool use_uniform_grid = false; // true: 均匀网格, false: 非均匀网格
+    const double res_high_m = 1.0;       // 高分辨率区域的网格大小（米）
 
     // 网格范围设置
     const double x_start_m = -1.0 * TURBINE_DIAMETER;
-    const double x_end_m = 3.0 * TURBINE_DIAMETER;
+    const double x_end_m = 7.0 * TURBINE_DIAMETER;
     const double y_max_m = 1.5 * TURBINE_DIAMETER / 2.0;
-    const double z_max_m = 1.5 * TURBINE_DIAMETER / 2.0;  // 竖直方向
-    
-    // 高分辨率盒子（用于非均匀网格）
+    const double z_max_m = 1.5 * TURBINE_DIAMETER / 2.0;
+
+    // 非均匀网格参数 (如果 use_uniform_grid = false)
     const double res_low_m = 5.0;
     const double x_fine_start_m = 0.0 * TURBINE_DIAMETER;
     const double x_fine_end_m = 3.0 * TURBINE_DIAMETER;

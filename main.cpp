@@ -29,6 +29,10 @@ void projectWakeToEulerianGrid(const fvw::Wake &wake,
                                int final_timestep,
                                const std::string &outputPath);
 
+void runProbeCalculation(const std::string &h5_filepath, const std::string &csv_filepath,
+                         const fvw::TurbineParams &turbineParams, const fvw::SimParams &simParams,
+                         const fvw::BladeGeometry &geom);
+
 int main(int argc, char *argv[])
 {
 #ifdef NDEBUG
@@ -38,8 +42,9 @@ int main(int argc, char *argv[])
 #endif
 
     // --- 控制开关与路径设置 ---
-    const bool projectToGrid = false;                                                                               // 是否在模拟结束后将最终尾流投影到欧拉网格
-    const std::string outputPath = "/home/shug8104/sa/vortex/postprocess/20250727_01_chord_base_cutoff_study/0_1"; // 设置输出文件目录
+    const bool projectToGrid = true;                                                     // 是否在模拟结束后将最终尾流投影到欧拉网格
+    const bool computeProbes = true;                                                     // 是否计算探针点诱导速度
+    const std::string outputPath = "/home/shug8104/sa/vortex/postprocess/20250718_test"; // 设置输出文件目录
 
     std::filesystem::create_directories(outputPath); // 确保输出目录存在
 
@@ -69,7 +74,7 @@ int main(int argc, char *argv[])
     simParams.outputFrequency = 10; // 每10步输出一次HDF5
 
     simParams.coreType = fvw::VortexCoreType::ChordBasedCore;
-    simParams.cutoffParam = 0.1;                            // 用于控制cutoff的参数，van Garrel就是delta，chordbase就是选弦长的比例
+    simParams.cutoffParam = 0.1;                           // 用于控制cutoff的参数，van Garrel就是delta，chordbase就是选弦长的比例
     simParams.vortexModel = fvw::VortexModelType::Constant; // 选择vortex diffusion model
 
     // --- 扰动实验 ---
@@ -196,6 +201,23 @@ int main(int argc, char *argv[])
         auto projection_duration = std::chrono::duration_cast<std::chrono::microseconds>(projection_end - projection_start);
         std::cout << "[Timing] Projection to Eulerian grid: "
                   << projection_duration.count() / 1e6 << " s" << std::endl;
+    }
+
+    // --- 探针点诱导速度计算 ---
+    if (computeProbes)
+    {
+        auto probe_calc_start = std::chrono::high_resolution_clock::now();
+        std::cout << "\n--- Calculating induced velocities at probe points ---" << std::endl;
+
+        // 构建HDF5和CSV文件的完整路径
+        std::string probe_csv_filepath = (std::filesystem::path(outputPath) / "probe_output.csv").string();
+
+        runProbeCalculation(h5_filepath, probe_csv_filepath, turbineParams, simParams, geom);
+
+        auto probe_calc_end = std::chrono::high_resolution_clock::now();
+        auto probe_calc_duration = std::chrono::duration_cast<std::chrono::microseconds>(probe_calc_end - probe_calc_start);
+        std::cout << "[Timing] Probe calculation: "
+                  << probe_calc_duration.count() / 1e6 << " s" << std::endl;
     }
 
     return 0;
@@ -340,4 +362,69 @@ void write_field_to_vtk(const std::string &filename,
         vtkFile << v.x << " " << v.y << " " << v.z << "\n";
 
     vtkFile.close();
+}
+
+// 新增的探针计算函数实现
+void runProbeCalculation(const std::string &h5_filepath, const std::string &csv_filepath,
+                         const fvw::TurbineParams &turbineParams, const fvw::SimParams &simParams,
+                         const fvw::BladeGeometry &geom)
+{
+    double D = turbineParams.rTip * 2.0; // 使用涡轮直径
+
+    // 2. 定义你的“虚拟探针”位置
+    std::vector<fvw::Vec3> probe_points;
+    double y_probe = 0.0;
+    double z_probe = 90.0 + 50.0; // z=90(hub)+50m
+    std::vector<double> x_locations_D = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0};
+    for (double x_D : x_locations_D)
+    {
+        probe_points.push_back({x_D * D, y_probe, z_probe});
+    }
+
+    // 3. 准备输出文件
+    std::ofstream outfile(csv_filepath);
+    if (!outfile.is_open())
+    {
+        std::cerr << "Error: Unable to open CSV file for probe output: " << csv_filepath << std::endl;
+        return;
+    }
+    outfile << "Timestep,Time,ProbeID,ProbeX,ProbeY,ProbeZ,U_ind,V_ind,W_ind\n";
+    outfile << std::fixed << std::setprecision(6); // 设置输出精度
+
+    // 4. 循环遍历HDF5中的所有时间步
+    // 使用simParams中的总时间步和输出频率
+    int start_step = 0;
+    int end_step = simParams.timesteps - 1; // 确保处理到最后一个时间步
+    int step_interval = simParams.outputFrequency;
+    double dt = simParams.dt;
+
+    // 创建一个Wake对象，它将在循环中被重复填充
+    fvw::Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
+
+    for (int t = start_step; t <= end_step; t += step_interval)
+    {
+        // std::cout << "正在处理探针时间步: " << t << "..." << std::endl;
+
+        // 5. 从HDF5中读取数据，填充到wake对象在时间步t的状态中
+        // 注意：这里需要确保 wake.h5 已经包含所有这些时间步的数据
+        fvw::read_wake_snapshot(wake, h5_filepath, t, turbineParams);
+
+        // 6. 调用你的函数，一次性计算所有探针点的诱导速度
+        std::vector<fvw::Vec3> induced_velocities_at_probes;
+        fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, turbineParams, geom, simParams);
+
+        // 7. 将结果写入CSV文件
+        for (size_t i = 0; i < probe_points.size(); ++i)
+        {
+            const auto &p = probe_points[i];
+            const auto &vel = induced_velocities_at_probes[i];
+
+            outfile << t << "," << t * dt << "," << i << ","
+                    << p.x << "," << p.y << "," << p.z << ","
+                    << vel.x << "," << vel.y << "," << vel.z << "\n";
+        }
+    }
+
+    outfile.close();
+    std::cout << "\n探针后处理完成，结果已保存至 " << csv_filepath << std::endl;
 }
