@@ -44,7 +44,7 @@ int main(int argc, char *argv[])
     // --- 控制开关与路径设置 ---
     const bool projectToGrid = true;                                                     // 是否在模拟结束后将最终尾流投影到欧拉网格
     const bool computeProbes = true;                                                     // 是否计算探针点诱导速度
-    const std::string outputPath = "/home/shug8104/sa/vortex/postprocess/20250718_test"; // 设置输出文件目录
+    const std::string outputPath = "/home/shug8104/sa/vortex/postprocess/20250718_Gammadecay_test/decay"; // 设置输出文件目录
 
     std::filesystem::create_directories(outputPath); // 确保输出目录存在
 
@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 
     simParams.coreType = fvw::VortexCoreType::ChordBasedCore;
     simParams.cutoffParam = 0.1;                           // 用于控制cutoff的参数，van Garrel就是delta，chordbase就是选弦长的比例
-    simParams.vortexModel = fvw::VortexModelType::Constant; // 选择vortex diffusion model
+    simParams.vortexModel = fvw::VortexModelType::GammaDecay; // 选择vortex diffusion model
 
     // --- 扰动实验 ---
     simParams.perturbation.type = fvw::PerturbationType::None;
