@@ -216,21 +216,21 @@ namespace fvw
             std::cout << "--- Applying Asymmetric Static Pitch Perturbation ---" << std::endl;
             std::cout << "  - Delta Alpha: " << simParams.perturbation.amplitude_deg << " deg" << std::endl;
 
-            std::vector<double> pitch_offsets_rad(turbineParams.nBlades);
+            std::vector<double> pitch_offsets(turbineParams.nBlades);
 
             // 假设3个叶片：一个为0，一个为+delta, 一个为-delta
             if (turbineParams.nBlades == 3)
             {
-                pitch_offsets_rad[0] = 0.0;
-                pitch_offsets_rad[1] = simParams.perturbation.amplitude_deg;
-                pitch_offsets_rad[2] = -simParams.perturbation.amplitude_deg;
+                pitch_offsets[0] = 0.0;
+                pitch_offsets[1] = simParams.perturbation.amplitude_deg;
+                pitch_offsets[2] = -simParams.perturbation.amplitude_deg;
             }
             else
             {
                 std::cerr << "[Error] Blade number mismatch: Asymmetric Static Pitch requires 3 blades." << std::endl;
                 for (int b = 0; b < turbineParams.nBlades; ++b)
                 {
-                    pitch_offsets_rad[b] = simParams.perturbation.amplitude_deg * std::sin(b * 2.0 * M_PI / turbineParams.nBlades);
+                    pitch_offsets[b] = simParams.perturbation.amplitude_deg * std::sin(b * 2.0 * M_PI / turbineParams.nBlades);
                 }
             }
 
@@ -239,7 +239,7 @@ namespace fvw
             {
                 for (int b = 0; b < turbineParams.nBlades; ++b)
                 {
-                    blade_pitches[t][b] = pitch_offsets_rad[b];
+                    blade_pitches[t][b] = pitch_offsets[b];
                 }
             }
             break;

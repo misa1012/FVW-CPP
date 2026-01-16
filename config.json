@@ -1,0 +1,25 @@
+{
+    "turbine": {
+        "model": "NREL_5MW",
+        "windSpeed": 11.4,
+        "rho": 1.225,
+        "nSegments": 18,
+        "tsr": 7.0
+    },
+    "simulation": {
+        "dt": 0.05,
+        "totalTime": 10.0,
+        "outputFrequency": 1,
+        "coreType": "ChordBasedCore",
+        "cutoffParam": 0.1,
+        "vortexModel": "Constant"
+    },
+    "perturbations": [
+        {
+            "name": "case_1",
+            "type": "None",
+            "amplitude": 0.0,
+            "freqFactor": 0.0
+        }
+    ]
+}

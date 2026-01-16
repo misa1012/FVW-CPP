@@ -6,14 +6,44 @@
 namespace fvw
 {
 
-    std::vector<AirfoilData> readAirfoils(const std::string &dataDir, bool verbose)
+    std::vector<AirfoilData> readAirfoils(const std::string &dataDir, const std::string &listFilename, bool verbose)
     {
-        std::vector<std::string> airfoilNames = {"Cylinder1", "Cylinder2", "DU40_A17", "DU35_A17",
-                                                 "DU30_A17", "DU25_A17", "DU21_A17", "NACA64_A17"};
+        std::vector<std::string> airfoilNames;
+        
+        // Read names from list file
+        std::string listPath = listFilename;
+        // If listFilename is relative and doesn't exist, maybe check if it's relative to dataDir?
+        // But for simplicity, we expect listFilename to be a valid path (absolute or relative to cwd).
+        // Let's assume listFilename is the full path to the list file.
+        
+        std::ifstream listFile(listPath);
+        if (!listFile.is_open()) {
+             // Try combining dataDir + listFilename if simple open fails? 
+             // Let's keep it simple: user provides path. 
+             std::cerr << "Error: Could not open airfoil list file: " << listPath << std::endl;
+             // Fallback to hardcoded for now? No, we want to remove hardcoding.
+             return {};
+        }
+        
+        std::string name;
+        while (std::getline(listFile, name)) {
+            // Trim whitespace
+            name.erase(0, name.find_first_not_of(" \t\r\n"));
+            name.erase(name.find_last_not_of(" \t\r\n") + 1);
+            if (!name.empty()) {
+                airfoilNames.push_back(name);
+            }
+        }
+        listFile.close();
+
         std::vector<AirfoilData> airfoils(airfoilNames.size());
         for (size_t i = 0; i < airfoilNames.size(); ++i)
         {
-            std::string filePath = dataDir + airfoilNames[i] + ".dat";
+            // Ensure dataDir has trailing slash if not empty
+            std::string dir = dataDir;
+            if (!dir.empty() && dir.back() != '/') dir += "/";
+            
+            std::string filePath = dir + airfoilNames[i] + ".dat";
             if (verbose)
             {
                 std::cout << "Reading: " << filePath << std::endl;

@@ -28,9 +28,9 @@
 //     fvw::validate(posParams, simParams, turbineParams, geom, pos);
 // }
 
-#include "../include/validate.h"
-#include "../include/validate_geometry.h"
-#include "../include/validate_position.h"
+#include "validate.h"
+#include "validate_geometry.h"
+#include "validate_position.h"
 #include <algorithm>
 #include <iostream>
 

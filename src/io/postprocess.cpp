@@ -336,8 +336,7 @@ namespace fvw
         try
         {
             // 打开或创建 HDF5 文件
-            H5::H5File file;
-            file = H5::H5File(outputFile, H5F_ACC_RDWR);
+            H5::H5File file(outputFile, H5F_ACC_RDWR);
 
             // 1. 创建 /config 组
             H5::Group configGroup = file.createGroup("/config");
@@ -503,4 +502,185 @@ namespace fvw
             std::cerr << "HDF5 read error: " << e.getDetailMsg() << std::endl;
         }
     }
+    // 读取HDF5快照
+
+
+    /**
+     * @brief 将最终的拉格朗日尾流数据投影到欧拉网格上，并保存为VTK文件。
+     */
+    void projectWakeToEulerianGrid(const Wake &wake,
+                                   const TurbineParams &turbineParams,
+                                   const SimParams &simParams,
+                                   const BladeGeometry &geom,
+                                   int final_timestep,
+                                   const std::string &outputPath)
+    {
+        // ===================== 参数设置 =====================
+        std::filesystem::path path(outputPath);
+        path /= "vel_eulerian.vtk";
+        const std::string vtk_filepath = path.string();
+
+        const double TURBINE_DIAMETER = turbineParams.rTip * 2.0;
+        const double hub_height = turbineParams.hubHeight > 1.0 ? turbineParams.hubHeight : 90.0; // Use config or default
+
+        // 网格参数选择
+        const bool use_uniform_grid = true; // true: 均匀网格, false: 非均匀网格
+        const double res_high_m = 1.0;       // 高分辨率区域的网格大小（米）
+
+        // 网格范围设置
+        const double x_start_m = -1.0 * TURBINE_DIAMETER;
+        const double x_end_m = 7.0 * TURBINE_DIAMETER;
+        const double y_max_m = 1.5 * TURBINE_DIAMETER / 2.0;
+        const double z_max_m = 1.5 * TURBINE_DIAMETER / 2.0;
+
+        // 非均匀网格参数 (如果 use_uniform_grid = false)
+        const double res_low_m = 5.0;
+        const double x_fine_start_m = 0.0 * TURBINE_DIAMETER;
+        const double x_fine_end_m = 3.0 * TURBINE_DIAMETER;
+        const double yz_fine_range_m = 1.5 * TURBINE_DIAMETER / 2.0;
+
+        // ===================== 网格构建 =====================
+        std::cout << "Creating Eulerian grid (" << (use_uniform_grid ? "uniform" : "non-uniform") << ")..." << std::endl;
+        std::vector<double> x_coords, y_coords, z_coords;
+
+        if (use_uniform_grid)
+        {
+            for (double x = x_start_m; x <= x_end_m; x += res_high_m)
+                x_coords.push_back(x);
+            for (double y = -y_max_m; y <= y_max_m; y += res_high_m)
+                y_coords.push_back(y);
+            for (double z = hub_height - z_max_m; z <= hub_height + z_max_m; z += res_high_m)
+                z_coords.push_back(z);
+        }
+        else
+        {
+            // X coordinates
+            for (double x = x_start_m; x < x_fine_start_m; x += res_low_m)
+                x_coords.push_back(x);
+            for (double x = x_fine_start_m; x < x_fine_end_m; x += res_high_m)
+                x_coords.push_back(x);
+            for (double x = x_fine_end_m; x <= x_end_m; x += res_low_m)
+                x_coords.push_back(x);
+            // Y coordinates
+            for (double y = -y_max_m; y < -yz_fine_range_m; y += res_low_m)
+                y_coords.push_back(y);
+            for (double y = -yz_fine_range_m; y <= yz_fine_range_m; y += res_high_m)
+                y_coords.push_back(y);
+            for (double y = yz_fine_range_m + res_low_m; y <= y_max_m; y += res_low_m)
+                y_coords.push_back(y);
+            // Z coordinates
+            for (double z = hub_height - z_max_m; z < hub_height - yz_fine_range_m; z += res_low_m)
+                z_coords.push_back(z);
+            for (double z = hub_height - yz_fine_range_m; z <= hub_height + yz_fine_range_m; z += res_high_m)
+                z_coords.push_back(z);
+            for (double z = hub_height + yz_fine_range_m + res_low_m; z <= hub_height + z_max_m; z += res_low_m)
+                z_coords.push_back(z);
+        }
+
+        const int Nx = x_coords.size();
+        const int Ny = y_coords.size();
+        const int Nz = z_coords.size();
+
+        std::vector<Vec3> grid_points;
+        grid_points.reserve(Nx * Ny * Nz);
+        for (int k = 0; k < Nz; ++k)
+            for (int j = 0; j < Ny; ++j)
+                for (int i = 0; i < Nx; ++i)
+                    grid_points.push_back({x_coords[i], y_coords[j], z_coords[k]});
+
+        std::cout << "Grid created. Dimensions: " << Nx << " x " << Ny << " x " << Nz
+                  << ", Total points: " << grid_points.size() << std::endl;
+
+        // ===================== 计算速度 =====================
+        std::cout << "Calculating induced velocity on grid points..." << std::endl;
+        std::vector<Vec3> grid_velocities;
+        fvw::computeInducedVelocity(grid_velocities, grid_points, wake, final_timestep, turbineParams, geom, simParams);
+
+        // ===================== 输出VTK =====================
+        std::cout << "Writing velocity field to VTK file: " << vtk_filepath << std::endl;
+        
+        // Inline implementation for now to avoid header leakage
+         std::ofstream vtkFile(vtk_filepath);
+        if (!vtkFile.is_open())
+        {
+            std::cerr << "Error: Unable to open VTK file " << vtk_filepath << std::endl;
+            return;
+        }
+
+        vtkFile << "# vtk DataFile Version 3.0\n";
+        vtkFile << "Wake Velocity Field\n";
+        vtkFile << "ASCII\n";
+        vtkFile << "DATASET STRUCTURED_GRID\n";
+        vtkFile << "DIMENSIONS " << Nx << " " << Ny << " " << Nz << "\n";
+        vtkFile << "POINTS " << grid_points.size() << " float\n";
+        for (const auto &p : grid_points)
+            vtkFile << p.x << " " << p.y << " " << p.z << "\n";
+
+        vtkFile << "POINT_DATA " << grid_velocities.size() << "\n"; 
+        vtkFile << "VECTORS Velocity float\n";
+        for (const auto &v : grid_velocities) 
+            vtkFile << v.x << " " << v.y << " " << v.z << "\n";
+
+        vtkFile.close();
+        
+        std::cout << "Post-processing successfully completed!" << std::endl;
+    }
+
+    void runProbeCalculation(const std::string &h5_filepath, const std::string &csv_filepath,
+                             const TurbineParams &turbineParams, const SimParams &simParams,
+                             const BladeGeometry &geom)
+    {
+        double D = turbineParams.rTip * 2.0;
+
+        // 2. 定义你的“虚拟探针”位置
+        std::vector<Vec3> probe_points;
+        double y_probe = 0.0;
+        double z_probe = (turbineParams.hubHeight > 1.0 ? turbineParams.hubHeight : 90.0) + 50.0; // z=Hub+50m
+        std::vector<double> x_locations_D = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0};
+        for (double x_D : x_locations_D)
+        {
+            probe_points.push_back({x_D * D, y_probe, z_probe});
+        }
+
+        // 3. 准备输出文件
+        std::ofstream outfile(csv_filepath);
+        if (!outfile.is_open())
+        {
+            std::cerr << "Error: Unable to open CSV file for probe output: " << csv_filepath << std::endl;
+            return;
+        }
+        outfile << "Timestep,Time,ProbeID,ProbeX,ProbeY,ProbeZ,U_ind,V_ind,W_ind\n";
+        outfile << std::fixed << std::setprecision(6);
+
+        // 4. 循环遍历HDF5中的所有时间步
+        int start_step = 0;
+        int end_step = simParams.timesteps - 1;
+        int step_interval = simParams.outputFrequency;
+        double dt = simParams.dt;
+
+        // 创建一个Wake对象
+        Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
+
+        for (int t = start_step; t <= end_step; t += step_interval)
+        {
+            read_wake_snapshot(wake, h5_filepath, t, turbineParams);
+
+            std::vector<Vec3> induced_velocities_at_probes;
+            fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, turbineParams, geom, simParams);
+
+            for (size_t i = 0; i < probe_points.size(); ++i)
+            {
+                const auto &p = probe_points[i];
+                const auto &vel = induced_velocities_at_probes[i];
+
+                outfile << t << "," << t * dt << "," << i << ","
+                        << p.x << "," << p.y << "," << p.z << ","
+                        << vel.x << "," << vel.y << "," << vel.z << "\n";
+            }
+        }
+
+        outfile.close();
+        std::cout << "\n探针后处理完成，结果已保存至 " << csv_filepath << std::endl;
+    }
+
 } // namespace fvw

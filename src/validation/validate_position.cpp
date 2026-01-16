@@ -1,6 +1,6 @@
 // Example: ./fvw_cpp --validate --section=position --blade=0 --timestep=0 --nodeType="trailing"
 
-#include "../include/validate_position.h"
+#include "validate_position.h"
 #include <iostream>
 #include <fstream>
 #include <iomanip>

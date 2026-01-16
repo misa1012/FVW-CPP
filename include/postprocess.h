@@ -20,6 +20,18 @@ namespace fvw
     void writeConfigToHDF5(const BladeGeometry &geom, const TurbineParams &turbineParams,
                            const SimParams &simParams, const std::string &outputFile);
 
+    // Legacy/Main Integration functions (Moved from main.cpp)
+    void projectWakeToEulerianGrid(const Wake &wake,
+                                   const TurbineParams &turbineParams,
+                                   const SimParams &simParams,
+                                   const BladeGeometry &geom,
+                                   int final_timestep,
+                                   const std::string &outputPath);
+
+    void runProbeCalculation(const std::string &h5_filepath, const std::string &csv_filepath,
+                             const TurbineParams &turbineParams, const SimParams &simParams,
+                             const BladeGeometry &geom);
+
     void read_wake_snapshot(Wake &wake, const std::string &h5_filepath, int timestep, const TurbineParams &turbineParams);
 }
 

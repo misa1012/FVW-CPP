@@ -1,4 +1,4 @@
-#include "../include/validate_geometry.h"
+#include "validate_geometry.h"
 #include <iostream>
 #include <fstream>
 #include <iomanip>

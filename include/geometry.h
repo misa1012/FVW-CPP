@@ -50,14 +50,25 @@ namespace fvw
 
     struct TurbineParams
     {
+        std::string model;
         double windSpeed;
         double rho;
         double rHub;
         double rTip;
+        double hubHeight; // Added for post-processing
         int nBlades;
         int nSegments;
         double tsr;
         double omega;
+    };
+
+    // Raw blade definition data (loaded from file)
+    struct BladeDefinition
+    {
+        std::vector<double> r;
+        std::vector<double> chord;
+        std::vector<double> twist;
+        std::vector<int> airfoilIndex;
     };
 
     struct BladeGeometry
@@ -74,7 +85,12 @@ namespace fvw
     };
 
     // 计算叶片几何
-    BladeGeometry computeBladeGeometry(const TurbineParams &params);
+    // Now requires explicit BladeDefinition input instead of hardcoded internal data
+    BladeGeometry computeBladeGeometry(const TurbineParams &params, const BladeDefinition &rawDist);
+
+    // Reads blade geometry distribution from a CSV file
+    // Format: r, chord, twist, airfoil_index
+    BladeDefinition loadBladeDefinition(const std::string &csvPath);
 
 } // namespace fvw
 

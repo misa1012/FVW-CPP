@@ -1,27 +1,58 @@
 #include "geometry.h"
 #include "utils.h"
 #include <cmath>
+#include <fstream>
+#include <sstream>
+#include <iostream>
+#include <algorithm>
 
 namespace fvw
 {
+    BladeDefinition loadBladeDefinition(const std::string &csvPath) {
+        BladeDefinition bd;
+        std::ifstream file(csvPath);
+        if (!file.is_open()) {
+            std::cerr << "Error: Could not open blade geometry file: " << csvPath << std::endl;
+            // Return empty or throw, here we return empty which will likely cause issues downstream but handled simply for now
+            return bd;
+        }
 
-    BladeGeometry computeBladeGeometry(const TurbineParams &params)
+        std::string line;
+        // Skip header
+        std::getline(file, line);
+
+        while (std::getline(file, line)) {
+            if (line.empty()) continue;
+            // Handle simple CSV parsing
+            std::replace(line.begin(), line.end(), ',', ' '); 
+            std::istringstream iss(line);
+            double r, c, t;
+            int idx;
+            if (iss >> r >> c >> t >> idx) {
+                bd.r.push_back(r);
+                bd.chord.push_back(c);
+                bd.twist.push_back(t);
+                bd.airfoilIndex.push_back(idx);
+            }
+        }
+        return bd;
+    }
+
+    BladeGeometry computeBladeGeometry(const TurbineParams &params, const BladeDefinition &rawDist)
     {
         BladeGeometry geom;
         int nTrail = params.nSegments + 1;
         int nShed = params.nSegments;
 
-        // Original blade data
-        std::vector<double> originalR = {1.5, 2.86670, 5.6, 8.33330, 11.75, 15.85, 19.95,
-                                         24.05, 28.15, 32.25, 36.35, 40.45, 44.55, 48.65,
-                                         52.75, 56.1667, 58.90, 61.6333, 63.0};
-        std::vector<double> originalChord = {3.542, 3.542, 3.854, 4.167, 4.557, 4.652, 4.458,
-                                             4.249, 4.007, 3.748, 3.502, 3.256, 3.010, 2.764,
-                                             2.518, 2.313, 2.086, 1.419, 1.419 / 2};
-        std::vector<double> originalTwist = {-13.308, -13.308, -13.308, -13.308, -13.308, -11.48,
-                                             -10.162, -9.011, -7.795, -6.544, -5.361, -4.188, -3.125,
-                                             -2.319, -1.526, -0.863, -0.370, -0.106, -0.106 / 2};
-        std::vector<int> originalNFoil = {0, 0, 0, 1, 2, 3, 3, 4, 5, 5, 6, 6, 7, 7, 7, 7, 7, 7, 7};
+        const auto& originalR = rawDist.r;
+        const auto& originalChord = rawDist.chord;
+        const auto& originalTwist = rawDist.twist;
+        const auto& originalNFoil = rawDist.airfoilIndex;
+
+        if (originalR.empty()) {
+             std::cerr << "Error: Blade definition is empty!" << std::endl;
+             return geom;
+        }
 
         // Cosine distribution for trailing nodes
         geom.rTrailing.resize(nTrail);

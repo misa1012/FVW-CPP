@@ -23,8 +23,13 @@ namespace fvw
     };
 
     // 读取翼型数据
+    // 读取翼型数据
+    // listFilename defaults to empty, in which case it looks for "airfoil_list.txt" in dataDir? 
+    // No, let's make it explicit or use a distinct overload. 
+    // Simplest: readAirfoils(dataDir, listFile)
     std::vector<AirfoilData> readAirfoils(
-        const std::string &dataDir = "../data/NREL_files/",
+        const std::string &dataDir,
+        const std::string &listFilename, 
         bool verbose = false);
 
 } // namespace fvw
