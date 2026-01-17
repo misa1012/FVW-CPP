@@ -95,8 +95,29 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     // --- Simulation Params ---
     if (!root.contains("simulation")) throw std::runtime_error("Missing 'simulation' section in config");
     const auto& simJson = root["simulation"];
-    config.sim.dt = simJson["dt"].as_double();
-    config.sim.totalTime = simJson["totalTime"].as_double();
+    
+    // Check for revolution-based parameters first
+    if (simJson.contains("stepsPerRevolution") && simJson.contains("numRevolutions")) {
+        config.sim.stepsPerRevolution = simJson["stepsPerRevolution"].as_int();
+        config.sim.numRevolutions = simJson["numRevolutions"].as_double();
+        
+        // Calculate period of one revolution
+        double period = 2.0 * M_PI / config.turbine.omega;
+        
+        // Calculate dt and totalTime from revolution-based parameters
+        config.sim.dt = period / config.sim.stepsPerRevolution;
+        config.sim.totalTime = config.sim.numRevolutions * period;
+        
+        std::cout << "Using revolution-based parameters: " 
+                  << config.sim.stepsPerRevolution << " steps/rev, "
+                  << config.sim.numRevolutions << " revolutions" << std::endl;
+        std::cout << "Calculated: dt = " << config.sim.dt << " s, totalTime = " 
+                  << config.sim.totalTime << " s" << std::endl;
+    } else {
+        // Fallback to direct specification
+        config.sim.dt = simJson["dt"].as_double();
+        config.sim.totalTime = simJson["totalTime"].as_double();
+    }
     config.sim.outputFrequency = simJson["outputFrequency"].as_int();
     config.sim.cutoffParam = simJson["cutoffParam"].as_double();
     config.sim.coreType = parseCoreType(simJson["coreType"].as_string());

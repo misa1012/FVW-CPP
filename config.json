@@ -7,8 +7,8 @@
         "tsr": 7.0
     },
     "simulation": {
-        "dt": 0.05,
-        "totalTime": 10.0,
+        "stepsPerRevolution": 100,
+        "numRevolutions": 5.0,
         "outputFrequency": 1,
         "coreType": "ChordBasedCore",
         "cutoffParam": 0.1,
@@ -16,7 +16,7 @@
     },
     "perturbations": [
         {
-            "name": "case_1",
+            "name": "NREL_5MW",
             "type": "None",
             "amplitude": 0.0,
             "freqFactor": 0.0

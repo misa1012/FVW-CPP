@@ -52,6 +52,11 @@ namespace fvw
         double bemTolerance = 1e-4;
         int bemMaxIterations = 200;
         double bemRelaxation = 0.2;
+        
+        // Revolution-based parameters (optional, for user convenience)
+        // If > 0, dt and totalTime will be calculated automatically
+        int stepsPerRevolution = 0;
+        double numRevolutions = 0.0;
     };
 
     // 风机物理参数

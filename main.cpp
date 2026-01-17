@@ -46,8 +46,12 @@ int main(int argc, char *argv[]) {
 #endif
 
     // 3. Setup Global Output
-    const std::string rootOutput = "../results";
-    std::filesystem::create_directories(rootOutput);
+    // Get the directory where the executable is located
+    std::filesystem::path exe_path = std::filesystem::canonical("/proc/self/exe");
+    std::filesystem::path project_root = exe_path.parent_path().parent_path(); // build/fvw_cpp -> FVW-CPP
+    std::filesystem::path output_path = project_root / "results";
+    std::filesystem::create_directories(output_path);
+    const std::string rootOutput = output_path.string();
 
     // 4. Run Cases
     const bool projectToGrid = false; 

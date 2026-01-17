@@ -3,10 +3,9 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
-#SBATCH --time=12:00:00
+#SBATCH --time=02:00:00
 #SBATCH --output=slurm-%j.out
-#SBATCH --error=slurm-%j.err
-#SBATCH --partition=short  
+#SBATCH --partition=short
 
 # =============================================================================
 # FVW OpenMP Job Submission Script
@@ -20,10 +19,10 @@ echo "=================================================="
 
 # --- 1. Environment Setup ---
 # Uncomment and modify specific module loads for your HPC system
-# module purge
-# module load gcc/11.2.0
-# module load hdf5/1.12.0
-# module load cmake
+module purge
+module load GCC/11.2.0
+module load HDF5/1.14.0-GCC-11.2.0-serial
+module load CMake/3.22.1-GCCcore-11.2.0
 
 # --- 2. OpenMP Configuration ---
 # Crucial for performance on high-core-count nodes
