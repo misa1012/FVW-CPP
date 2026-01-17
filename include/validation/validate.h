@@ -1,9 +1,9 @@
 #ifndef FVW_VALIDATE_H
 #define FVW_VALIDATE_H
 
-#include "geometry.h"
-#include "position.h"
-#include "utils.h"
+#include "core/geometry.h"
+#include "core/position.h"
+#include "core/utils.h"
 #include <string>
 #include <vector>
 

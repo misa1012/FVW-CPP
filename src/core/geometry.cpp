@@ -1,5 +1,5 @@
-#include "geometry.h"
-#include "utils.h"
+#include "core/geometry.h"
+#include "core/utils.h"
 #include <cmath>
 #include <fstream>
 #include <sstream>

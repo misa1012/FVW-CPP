@@ -1,4 +1,4 @@
-#include "velocity.h"
+#include "core/velocity.h"
 #include <cmath>
 
 namespace fvw

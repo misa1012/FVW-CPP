@@ -12,7 +12,11 @@ The project follows a modular architecture separating physics models, data handl
     - **`models/`**: Aerodynamic models (`Geometry`, `Airfoils`, `induced_velocity`).
     - **`io/`**: Input/Output handling (`ConfigLoader`, `H5Writer`).
     - **`simulation/`**: High-level driver (`SimulationRunner`).
-- **`include/`**: Public headers.
+- **`include/`**: Public headers (Mirrors `src/` structure).
+    - **`core/`**: `geometry.h`, `wake.h`, etc.
+    - **`models/`**: `airfoil.h`, `performance.h`, `bem.h`
+    - **`io/`**: `config.h`, `postprocess.h`
+    - **`simulation/`**: `simulation_runner.h`
 - **`tools/`**: Auxiliary post-processing executables (`postprocess_grid`, etc.).
 - **`main.cpp`**: The primary simulation entry point.
 
@@ -40,11 +44,22 @@ The project uses CMake (3.10+).
 - **`fvw_cpp`**: Main executable linked against `fvw_core`.
 - **`postprocess_XXX`**: Tools linked against `fvw_core`.
 
-### Adding New Tools
-To add a new C++ tool:
-1. Create source file in `tools/new_tool.cpp`.
-2. Add executable in `CMakeLists.txt`:
-   ```cmake
-   add_executable(new_tool tools/new_tool.cpp)
-   target_link_libraries(new_tool PRIVATE fvw_core)
-   ```
+### Build Configurations
+
+You can customize the build using CMake options:
+
+| Option | Default | Description |
+|--------|---------|-------------|
+| `BUILD_FVW_CPP` | `ON` | Main simulation executable. |
+| `BUILD_TOOL_GRID` | `ON` | VTK grid generation post-processing tool. |
+| `BUILD_TOOL_PROBES` | `OFF` | Point probe sampling tool. |
+| `BUILD_TOOL_DOWNSTREAM` | `OFF` | Downstream velocity profile calculator. |
+| `BUILD_VALIDATION` | `OFF` | Compile validation library (checking geometry/position math). |
+| `ENABLE_PROFILING` | `OFF` | Enable `gprof` profiling flags. |
+
+**Example**: Build only the main simulation without any tools:
+```bash
+cmake .. -DBUILD_TOOL_GRID=OFF
+make
+```
+

@@ -1,10 +1,10 @@
 #ifndef FVW_BEM_H
 #define FVW_BEM_H
 
-#include "performance.h"
-#include "geometry.h"
-#include "airfoil.h"
-#include "utils.h"
+#include "models/performance.h"
+#include "core/geometry.h"
+#include "models/airfoil.h"
+#include "core/utils.h"
 
 namespace fvw
 {

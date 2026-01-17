@@ -1,8 +1,8 @@
 #ifndef FVW_POSITION_H
 #define FVW_POSITION_H
 
-#include "utils.h"
-#include "geometry.h"
+#include "core/utils.h"
+#include "core/geometry.h"
 #include <vector>
 #include <string>
 

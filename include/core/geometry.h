@@ -1,7 +1,7 @@
 #ifndef FVW_GEOMETRY_H
 #define FVW_GEOMETRY_H
 
-#include "utils.h"
+#include "core/utils.h"
 #include <vector>
 
 namespace fvw

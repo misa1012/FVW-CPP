@@ -1,8 +1,8 @@
 #ifndef FVW_VELOCITY_H
 #define FVW_VELOCITY_H
 
-#include "utils.h"
-#include "position.h"
+#include "core/utils.h"
+#include "core/position.h"
 #include <vector>
 
 namespace fvw

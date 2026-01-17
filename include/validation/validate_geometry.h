@@ -1,7 +1,7 @@
 #ifndef FVW_VALIDATE_GEOMETRY_H
 #define FVW_VALIDATE_GEOMETRY_H
 
-#include "geometry.h"
+#include "core/geometry.h"
 
 namespace fvw
 {

@@ -1,4 +1,4 @@
-#include "airfoil.h"
+#include "models/airfoil.h"
 #include <fstream>
 #include <sstream>
 #include <iostream>

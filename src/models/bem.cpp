@@ -1,4 +1,4 @@
-#include "bem.h"
+#include "models/bem.h"
 #include <iostream>
 #include <iomanip>
 #include <set>

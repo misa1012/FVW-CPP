@@ -1,4 +1,4 @@
-#include "wake.h"
+#include "core/wake.h"
 #include <cmath>
 #include <iostream>
 #include <fstream>
@@ -307,7 +307,7 @@ namespace fvw
             // 总速度 = 自由流速度 + 诱导速度
             wake.getNodes(timestep, bladeIdx)[localNodeIdx].velocity = initialFreeStreamVel + inducedVelocities[i];
         }
-        std::cout << "Node velocities updated for timestep " << timestep << "." << std::endl;
+        // std::cout << "Node velocities updated for timestep " << timestep << "." << std::endl;
     }
 
     // 把wake向前convect一步
@@ -487,7 +487,7 @@ namespace fvw
             // to update the gamma values for the newly created lines.
         }
 
-        std::cout << "Wake structure advanced to timestep " << currentTimestep << "." << std::endl;
+        // std::cout << "Wake structure advanced to timestep " << currentTimestep << "." << std::endl;
     }
 
     // Kutta循环 update vortex strength
@@ -509,7 +509,7 @@ namespace fvw
             return;
         }
 
-        std::cout << "Starting Kutta-Joukowski iteration for timestep " << currentTimestep << "..." << std::endl;
+        // std::cout << "Starting Kutta-Joukowski iteration for timestep " << currentTimestep << "..." << std::endl;
 
         double max_dg = 0.0; // 用于检查收敛的最大 Gamma 变化量
         // 开始循环
@@ -785,7 +785,7 @@ namespace fvw
             // --- 5. 检查收敛条件 ---
             if (max_dg < convergenceThreshold)
             {
-                std::cout << "  Kutta-Joukowski iteration converged after " << iter + 1 << " iterations. Max |dGamma| = " << max_dg << std::endl;
+                // std::cout << "  Kutta-Joukowski iteration converged after " << iter + 1 << " iterations. Max |dGamma| = " << max_dg << std::endl;
                 break; // 收敛，退出迭代循环
             }
         }

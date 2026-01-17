@@ -4,7 +4,8 @@
 #include <filesystem>
 #include <chrono>
 
-#include "simulation_runner.h"
+#include "simulation/simulation_runner.h"
+#include "io/cli_utils.h"
 
 // Clean output dir (moved to SimulationRunner but good to have helper or use from class?)
 // Actually SimulationRunner handles its own output directory.
@@ -45,18 +46,19 @@ int main(int argc, char *argv[]) {
 #endif
 
     // 3. Setup Global Output
-    const std::string rootOutput = "./results";
+    const std::string rootOutput = "../results";
     std::filesystem::create_directories(rootOutput);
 
     // 4. Run Cases
-    // Control flags (could be exposed via CLI args later)
     const bool projectToGrid = false; 
     const bool computeProbes = false; 
 
-    auto total_start = std::chrono::high_resolution_clock::now();
+    auto batch_start = std::chrono::high_resolution_clock::now();
     
+    std::vector<std::string> completed_cases;
+
     if (config.perturbations.empty()) {
-        std::cout << "No perturbations defined in config. Running single default baseline.\n";
+        fvw::cli::print_warning("No perturbations defined. Running default baseline.");
         fvw::PerturbationConfig default_pc;
         default_pc.name = "default_baseline";
         default_pc.type = fvw::PerturbationType::None;
@@ -65,22 +67,29 @@ int main(int argc, char *argv[]) {
         runner.initialize();
         runner.run();
         runner.finalize(projectToGrid, computeProbes);
+        completed_cases.push_back("default_baseline");
     } else {
-        std::cout << "Starting batch of " << config.perturbations.size() << " cases.\n";
+        std::cout << fvw::cli::BOLD << "Starting batch of " << config.perturbations.size() << " cases." << fvw::cli::RESET << "\n";
         for (const auto &pc : config.perturbations)
         {
             fvw::SimulationRunner runner(pc, config, rootOutput);
             runner.initialize();
             runner.run();
             runner.finalize(projectToGrid, computeProbes);
+            completed_cases.push_back(pc.name);
         }
     }
     
-    auto total_end = std::chrono::high_resolution_clock::now();
-    auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start);
+    auto batch_end = std::chrono::high_resolution_clock::now();
+    double total_time = std::chrono::duration_cast<std::chrono::milliseconds>(batch_end - batch_start).count() / 1000.0;
 
-    std::cout << "\n[ALL DONE] Batch completed in "
-              << total_duration.count() / 1e6 << " s" << std::endl;
+    fvw::cli::print_header("Batch Summary");
+    std::cout << fvw::cli::BOLD << std::left << std::setw(30) << "Case Name" << "Status" << fvw::cli::RESET << "\n";
+    std::cout << "------------------------------------------\n";
+    for(const auto& name : completed_cases) {
+        std::cout << std::left << std::setw(30) << name << fvw::cli::GREEN << "COMPLETED" << fvw::cli::RESET << "\n";
+    }
+    std::cout << "\n" << fvw::cli::BOLD << "Total Time: " << total_time << " s" << fvw::cli::RESET << "\n";
 
     return 0;
 }

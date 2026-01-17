@@ -13,15 +13,15 @@
 #include <memory>
 
 // FVW Includes
-#include "config.h"
-#include "geometry.h"
-#include "position.h"
-#include "velocity.h"
-#include "performance.h"
-#include "bem.h"
-#include "wake.h"
-#include "postprocess.h"
-#include "airfoil.h"
+#include "io/config.h"
+#include "core/geometry.h"
+#include "core/position.h"
+#include "core/velocity.h"
+#include "models/performance.h"
+#include "models/bem.h"
+#include "core/wake.h"
+#include "io/postprocess.h"
+#include "models/airfoil.h"
 
 namespace fvw {
 

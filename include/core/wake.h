@@ -1,12 +1,12 @@
 #ifndef FVW_WAKE_H
 #define FVW_WAKE_H
 
-#include "geometry.h"
-#include "performance.h"
-#include "position.h"
-#include "utils.h"
-#include "velocity.h"
-#include "airfoil.h"
+#include "core/geometry.h"
+#include "models/performance.h"
+#include "core/position.h"
+#include "core/utils.h"
+#include "core/velocity.h"
+#include "models/airfoil.h"
 #include <vector>
 #include <stdexcept>
 #include <string> // 用于 to_string 等

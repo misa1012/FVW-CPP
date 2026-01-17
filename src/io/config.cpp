@@ -1,5 +1,5 @@
-#include "config.h"
-#include "json_utils.h"
+#include "io/config.h"
+#include "io/json_utils.h"
 #include <iostream>
 #include <stdexcept>
 #include <cmath>

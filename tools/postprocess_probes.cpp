@@ -7,10 +7,10 @@
 #include <filesystem> // C++17 for path manipulation
 
 // 包含项目中已有的头文件
-#include "wake.h"
-#include "postprocess.h" // 需要我们刚刚添加的新函数
-#include "geometry.h"    // TurbineParams在这里定义
-#include "config.h"
+#include "core/wake.h"
+#include "io/postprocess.h" // 需要我们刚刚添加的新函数
+#include "core/geometry.h"    // TurbineParams在这里定义
+#include "io/config.h"
 
 // 引入 std::filesystem 命名空间
 namespace fs = std::filesystem;

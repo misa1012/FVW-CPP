@@ -6,10 +6,10 @@
 #include <cmath>
 #include <filesystem>
 
-#include "wake.h"
-#include "postprocess.h"
-#include "geometry.h"
-#include "config.h"
+#include "core/wake.h"
+#include "io/postprocess.h"
+#include "core/geometry.h"
+#include "io/config.h"
 
 namespace fs = std::filesystem;
 

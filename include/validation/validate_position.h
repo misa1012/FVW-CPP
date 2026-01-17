@@ -1,9 +1,9 @@
 #ifndef FVW_VALIDATE_POSITION_H
 #define FVW_VALIDATE_POSITION_H
 
-#include "position.h"
-#include "geometry.h"
-#include "utils.h"
+#include "core/position.h"
+#include "core/geometry.h"
+#include "core/utils.h"
 
 namespace fvw
 {

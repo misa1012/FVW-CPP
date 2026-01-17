@@ -1,4 +1,4 @@
-#include "position.h"
+#include "core/position.h"
 #include <cmath>
 #include <iostream>
 

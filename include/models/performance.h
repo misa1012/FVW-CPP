@@ -1,7 +1,7 @@
 #ifndef FVW_PERFORMANCE_H
 #define FVW_PERFORMANCE_H
 
-#include "utils.h"
+#include "core/utils.h"
 #include <vector>
 #include <stdexcept>
 #include <iostream>

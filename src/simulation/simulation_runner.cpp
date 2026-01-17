@@ -1,4 +1,5 @@
-#include "simulation_runner.h"
+#include "simulation/simulation_runner.h"
+#include "io/cli_utils.h"
 
 namespace fvw {
 
@@ -14,11 +15,9 @@ void SimulationRunner::initialize() {
     m_caseOutDir = reset_case_output(m_rootOutput, m_pc.name, true);
     m_h5Filepath = (std::filesystem::path(m_caseOutDir) / "wake.h5").string();
     
-    std::cout << "\n=====================\n";
-    std::cout << "Running case: " << m_pc.name << "\n";
-    std::cout << "Output (clean): " << m_caseOutDir << "\n";
-    std::cout << "=====================\n";
-
+    cli::print_header("Case: " + m_pc.name);
+    cli::print_info("Output Dir", m_caseOutDir);
+    
     // 2. Resolve resource paths
     resolve_paths();
 
@@ -27,6 +26,8 @@ void SimulationRunner::initialize() {
 
     // 4. Load resources (Geometry, Airfoils)
     load_resources();
+    cli::print_info("Turbine", m_turbineParams.model);
+    cli::print_info("Wind Speed", std::to_string(m_turbineParams.windSpeed) + " m/s");
 
     // 5. Compute derived geometry
     m_geom = computeBladeGeometry(m_turbineParams, m_bladeDef);
@@ -57,17 +58,14 @@ void SimulationRunner::initialize() {
 
 void SimulationRunner::run() {
     auto total_start = std::chrono::high_resolution_clock::now();
+    
+    cli::ProgressBar progress(m_simParams.timesteps);
+    
+    // Initial update
+    progress.update(0, 0.0);
 
     for (int t = 1; t < m_simParams.timesteps; ++t)
     {
-        auto step_start = std::chrono::high_resolution_clock::now();
-
-        if (t % 100 == 0 || t == 1)
-        {
-            std::cout << "[" << m_pc.name << "] step " << t << "/" << m_simParams.timesteps - 1
-                      << ", time = " << t * m_simParams.dt << " s" << std::endl;
-        }
-
         AdvanceWakeStructure(*m_wake, m_geom, m_turbineParams, *m_pos, m_simParams.dt, t);
         kuttaJoukowskiIteration(*m_wake, *m_perf, m_geom, *m_axes, m_turbineParams, *m_pos, *m_velBCS, m_airfoils, m_simParams);
 
@@ -83,17 +81,18 @@ void SimulationRunner::run() {
             writeWakeToHDF5(*m_wake, *m_pos, *m_perf, *m_velICS, *m_velBCS, m_turbineParams, m_h5Filepath, t);
         }
 
-        auto step_end = std::chrono::high_resolution_clock::now();
-        auto step_duration = std::chrono::duration_cast<std::chrono::microseconds>(step_end - step_start);
-        if (t % 200 == 0 || t == m_simParams.timesteps - 1)
-        {
-            std::cout << "[Timing] step " << t << ": " << step_duration.count() / 1e6 << " s" << std::endl;
+        // Update progress bar every 10 steps or if done
+        if (t % 10 == 0 || t == m_simParams.timesteps - 1) {
+            auto current_now = std::chrono::high_resolution_clock::now();
+            double elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(current_now - total_start).count() / 1000.0;
+            progress.update(t, elapsed);
         }
     }
+    progress.finish();
 
     auto total_end = std::chrono::high_resolution_clock::now();
-    auto total_duration = std::chrono::duration_cast<std::chrono::microseconds>(total_end - total_start);
-    std::cout << "[Timing] Total simulation time: " << total_duration.count() / 1e6 << " s" << std::endl;
+    auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(total_end - total_start);
+    std::cout << cli::GREEN << "Done in " << total_duration.count() / 1000.0 << " s" << cli::RESET << std::endl;
 }
 
 void SimulationRunner::finalize(bool projectToGrid, bool computeProbes) {

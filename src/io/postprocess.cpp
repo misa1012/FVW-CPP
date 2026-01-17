@@ -1,4 +1,4 @@
-#include "postprocess.h"
+#include "io/postprocess.h"
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -322,7 +322,7 @@ namespace fvw
                 // posDataset.write(&posData[0], H5::PredType::NATIVE_DOUBLE);
             }
 
-            std::cout << "Wrote HDF5 data for timestep " << timestep << " to " << outputFile << std::endl;
+            // std::cout << "Wrote HDF5 data for timestep " << timestep << " to " << outputFile << std::endl;
         }
         catch (const H5::Exception &e)
         {

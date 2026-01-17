@@ -3,7 +3,7 @@
 
 #include <string>
 #include <vector>
-#include "geometry.h"
+#include "core/geometry.h"
 
 namespace fvw {
 

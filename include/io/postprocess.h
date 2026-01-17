@@ -1,8 +1,8 @@
 #ifndef POSTPROCESS_H
 #define POSTPROCESS_H
 
-#include "wake.h"
-#include "position.h"
+#include "core/wake.h"
+#include "core/position.h"
 #include <string>
 #include <H5Cpp.h>
 
