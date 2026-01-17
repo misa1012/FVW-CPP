@@ -54,10 +54,21 @@ ct = res['CT']
 print(f"Mean Cp: {cp.mean():.4f}")
 ```
 
-## Example Script
-See `python/example.py` for a complete runnable example that plots $C_P$ and $C_T$ over time.
+## Analysis Tool
+See `python/process_aero.py` for a complete runnable analysis tool that plots $C_P$, $C_T$, Power, and Thrust over time.
 
 ```bash
 cd python
-python example.py ../build/results/case_baseline/wake.h5
+python process_aero.py ../results/case_baseline/wake.h5
+```
+
+### Spanwise Analysis
+Use `python/process_spanwise.py` to inspect coefficients ($C_l, C_d, \alpha$) along the blade span for a specific timestep.
+
+```bash
+# Analyze the last valid timestep (default)
+python process_spanwise.py ../results/case_baseline/wake.h5
+
+# Analyze a specific timestep (e.g., 100)
+python process_spanwise.py ../results/case_baseline/wake.h5 --step 100
 ```

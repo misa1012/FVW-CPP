@@ -12,6 +12,7 @@ namespace fvw
 {
     // Biot-Savart function
     // Optimize for blade structure
+    // Optimized Biot-Savart function using Fast Filament approach
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
                                 const Wake &wake, int timestep, const BladeGeometry &geom, const SimParams &simParams)
     {
@@ -22,128 +23,133 @@ namespace fvw
             false;
 #endif
 
-        const size_t numTargetPoints = targetPoints.size(); // 缓存大小
+        const size_t numTargetPoints = targetPoints.size();
         inducedVelocities.assign(numTargetPoints, Vec3(0.0, 0.0, 0.0));
 
         if (timestep < 0 || static_cast<size_t>(timestep) >= wake.bladeWakes.size() || wake.bladeWakes[timestep].empty())
         {
-            std::cerr << "Warning: Trying to compute induced velocity for an invalid or empty timestep: " << timestep << std::endl;
-            return; // 或者抛出异常
+            // std::cerr << "Warning: Trying to compute induced velocity for an invalid or empty timestep: " << timestep << std::endl;
+            return;
         }
 
-        double four_pi = 4.0 * M_PI;
+        // --- 1. Flatten / Linearize the Wake (Pre-computation) ---
+        // This moves memory lookups and smoothing term calculations OUT of the N^2 loop.
+        // It converts Array-of-Structures-with-Indirection to a flat Array-of-Structs.
+        
+        struct FastFilament
+        {
+            Vec3 x1;
+            Vec3 x2;
+            double gamma;
+            double smoothing_term; 
+        };
 
-#pragma omp parallel for if (enableOpenMP)
+        // Estimate reserve size to avoid reallocation
+        // Max possible = nBlades * (nShed + nTrail + nShed) ~ nBlades * 3 * nTrail
+        size_t est_elements = wake.nBlades * (wake.nShed + wake.nShed + wake.nTrail);
+        std::vector<FastFilament> fast_wake;
+        fast_wake.reserve(est_elements);
+
+        double four_pi = 4.0 * M_PI;
+        double cutoff_sq = simParams.cutoffParam * simParams.cutoffParam;
+
+        for (int b = 0; b < wake.nBlades; ++b)
+        {
+            const BladeWake &bladeWake = wake.getBladeWake(timestep, b);
+            const auto &nodes = bladeWake.nodes;
+            const auto &lines = bladeWake.lines;
+
+            for (const auto &line : lines)
+            {
+                // Validity checks
+                if (line.startNodeIdx < 0 || line.endNodeIdx < 0 ||
+                    static_cast<size_t>(line.startNodeIdx) >= nodes.size() ||
+                    static_cast<size_t>(line.endNodeIdx) >= nodes.size())
+                {
+                    continue;
+                }
+
+                // Skip weak vortices? (Optional optimization, strictness depends on needs)
+                 if (std::abs(line.gamma) < 1e-9) continue; 
+
+                const Vec3 &x1 = nodes[line.startNodeIdx].position;
+                const Vec3 &x2 = nodes[line.endNodeIdx].position;
+                
+                // Pre-compute Geometry
+                Vec3 l_vec = x2 - x1;
+                double l_squared = l_vec.norm_squared();
+                if (l_squared < 1e-12) continue; // Skip zero-length lines
+
+                // Pre-compute Smoothing Term
+                double smoothing = 0.0;
+                if (simParams.coreType == VortexCoreType::VanGarrel)
+                {
+                    smoothing = cutoff_sq * l_squared;
+                }
+                else if (simParams.coreType == VortexCoreType::ChordBasedCore)
+                {
+                    int segment_idx = line.segment_index;
+                    double chord_local = 3.0; // Default
+
+                    if (line.type == VortexLineType::Bound || line.type == VortexLineType::Shed)
+                    {
+                        if (segment_idx >= 0 && static_cast<size_t>(segment_idx) < geom.chordShedding.size())
+                            chord_local = geom.chordShedding[segment_idx];
+                    }
+                    else if (line.type == VortexLineType::Trailing)
+                    {
+                        if (segment_idx >= 0 && static_cast<size_t>(segment_idx) < geom.chordTrailing.size())
+                            chord_local = geom.chordTrailing[segment_idx];
+                    }
+                    smoothing = cutoff_sq * chord_local * chord_local;
+                }
+
+                // Add to flat list
+                fast_wake.push_back({x1, x2, line.gamma, smoothing});
+            }
+        }
+        
+        // --- 2. Parallel N-Body Interaction ---
+        // Iterate over Target Points (Parallel)
+        //    Iterate over FastFilaments (Serial, Linear Memory Access)
+
+#pragma omp parallel for if (enableOpenMP) schedule(static)
         for (size_t p_idx = 0; p_idx < numTargetPoints; ++p_idx)
         {
-            const Vec3 &p = targetPoints[p_idx]; // 使用引用
+            const Vec3 &p = targetPoints[p_idx];
             Vec3 total_vel_at_p(0.0, 0.0, 0.0);
 
-            // 遍历该时间步的所有叶片
-            for (int b = 0; b < wake.nBlades; ++b)
+            // Access raw pointer for potential compiler vectorization hints? 
+            // Often iterators are optimized well enough in -O3.
+            for (const auto &fil : fast_wake)
             {
-                const BladeWake &bladeWake = wake.getBladeWake(timestep, b);
-                const auto &nodes = bladeWake.nodes; // 当前叶片的节点
-                const auto &lines = bladeWake.lines; // 当前叶片的线段
+                Vec3 r1 = p - fil.x1;
+                Vec3 r2 = p - fil.x2;
+                
+                // Biot-Savart Kernel
+                double r1_norm = r1.norm();
+                double r2_norm = r2.norm();
+                double r1_r2 = r1_norm * r2_norm;
+                double dot_r1_r2 = r1.dot(r2);
+                
+                // Cross product
+                // r1 x r2 = (p - x1) x (p - x2) = (p x p) - (p x x2) - (x1 x p) + (x1 x x2) 
+                //         = 0 - p x x2 + p x x1 + x1 x x2
+                //         = p x (x1 - x2) + x1 x x2
+                // Actually r1 x r2 is standard.
+                Vec3 cross_r1_r2 = r1.cross(r2);
 
-                // 遍历当前叶片的所有线段
-                for (const auto &line : lines)
-                {
-                    // 检查索引是否有效
-                    if (line.startNodeIdx < 0 || line.endNodeIdx < 0 ||
-                        static_cast<size_t>(line.startNodeIdx) >= nodes.size() || 
-                        static_cast<size_t>(line.endNodeIdx) >= nodes.size())
-                    {
-                        // std::cerr << "Warning: Invalid node index encountered in computeInducedVelocity for blade " << b << ", timestep " << timestep << std::endl;
-                        continue; // 跳过这条无效线段
-                    }
+                double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + fil.smoothing_term;
+                
+                // Avoid divide by zero check? Smoothing term usually handles it, but robust code:
+                if (denominator < 1e-12) continue;
 
-                    const Vec3 &x1 = nodes[line.startNodeIdx].position; // 使用引用
-                    const Vec3 &x2 = nodes[line.endNodeIdx].position;
-                    double gamma = line.gamma;
+                double coeff = fil.gamma / four_pi;
+                double factor = coeff * (r1_norm + r2_norm) / denominator;
 
-                    // Vortex core model
-                    double smoothing_term = 0.0;
-                    switch (simParams.coreType)
-                    {
-                    case VortexCoreType::VanGarrel:
-                    {
-                        Vec3 l_vec = x2 - x1;
-                        double l_squared = l_vec.norm_squared();
-                        if (l_squared < 1e-12)
-                        {
-                            // std::cerr << "Warning: The line is smaller than 1e-12" << std::endl;
-                            continue; // 跳过长度为零的线段
-                        }
-                        smoothing_term = simParams.cutoffParam * simParams.cutoffParam * l_squared;
-                        break;
-                    }
-                    case VortexCoreType::ChordBasedCore:
-                    {
-                        // 跟local chord挂钩
-                        int segment_idx = line.segment_index;
-                        double chord_local = 0.0;
-                        if (line.type == VortexLineType::Bound || line.type == VortexLineType::Shed)
-                        {
-                            // 对于附着涡(Bound)和脱落涡(Shed)，它们与叶片上的“叶素分段”直接相关。
-                            // 因此，使用在分段中心定义的 chordShedding 是物理上最合理的。
-                            if (segment_idx >= 0 && static_cast<size_t>(segment_idx) < geom.chordShedding.size())
-                            {
-                                chord_local = geom.chordShedding[segment_idx];
-                            }
-                            else
-                            {
-                                // 如果索引无效（例如，对于从旧代码继承的、没有索引的远场shed涡），使用一个平均值作为后备。
-                                chord_local = 3.0; // 假设的平均弦长
-                            }
-                        }
-                        else if (line.type == VortexLineType::Trailing)
-                        {
-                            // 对于尾迹涡(Trailing)，它们是从叶片后缘的“节点”上脱落的。
-                            // 因此，使用在后缘节点上定义的 chordTrailing 更为精确。
-                            // 在你的结构中，trailing line的segment_index对应于它所连接的后缘节点的索引。
-                            if (segment_idx >= 0 && static_cast<size_t>(segment_idx) < geom.chordTrailing.size())
-                            {
-                                chord_local = geom.chordTrailing[segment_idx];
-                            }
-                            else
-                            {
-                                // 后备方案
-                                chord_local = 3.0;
-                            }
-                        }
-                        else
-                        {
-                            // 为未知类型的涡线提供一个默认值
-                            chord_local = 3.0;
-                        }
-                        smoothing_term = simParams.cutoffParam * simParams.cutoffParam * chord_local * chord_local;
-                        // std::cout << "SegIdx: " << segment_idx
-                        //           << ", Chord: " << chord_local
-                        //           << ", SmoothingTerm: " << smoothing_term
-                        //           << std::endl;
-                        break;
-                    }
-                    }
-
-                    double coeff = gamma / four_pi; // 使用预计算的 M_PI
-
-                    Vec3 r1 = p - x1;
-                    Vec3 r2 = p - x2;
-                    double r1_norm = r1.norm();
-                    double r2_norm = r2.norm();
-                    double r1_r2 = r1_norm * r2_norm;
-                    double dot_r1_r2 = r1.dot(r2);
-                    Vec3 cross_r1_r2 = r1.cross(r2);
-
-                    double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + smoothing_term;
-
-                    double factor = coeff * (r1_norm + r2_norm) / denominator;
-
-                    total_vel_at_p.x += cross_r1_r2.x * factor;
-                    total_vel_at_p.y += cross_r1_r2.y * factor;
-                    total_vel_at_p.z += cross_r1_r2.z * factor;
-                }
+                total_vel_at_p.x += cross_r1_r2.x * factor;
+                total_vel_at_p.y += cross_r1_r2.y * factor;
+                total_vel_at_p.z += cross_r1_r2.z * factor;
             }
 
             inducedVelocities[p_idx] = total_vel_at_p;

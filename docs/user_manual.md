@@ -101,7 +101,7 @@ make -j4
 
 # 3. 后处理 (分析结果)
 cd ../python
-python example.py ../build/results/case_baseline/wake.h5
+python process_aero.py ../results/case_baseline/wake.h5
 ```
 
 ### 3.2 配置文件

@@ -114,29 +114,13 @@ namespace fvw
             H5::H5File file(outputFile, timestep == 0 ? H5F_ACC_TRUNC : H5F_ACC_RDWR);
 
             // 1. 创建 Wake 组
-            H5::Group wakeGroup;
-            if (timestep == 0)
-            {
-                wakeGroup = file.createGroup("/wake");
-            }
-            else
-            {
-                wakeGroup = file.openGroup("/wake");
-            }
+            H5::Group wakeGroup = (timestep == 0) ? file.createGroup("/wake") : file.openGroup("/wake");
 
             std::string wakeTimestepName = "/wake/timestep_" + std::to_string(timestep);
             H5::Group wakeTimestepGroup = wakeGroup.createGroup(wakeTimestepName);
 
             // 2. 创建 LiftingLine 组
-            H5::Group liftingLineGroup;
-            if (timestep == 0)
-            {
-                liftingLineGroup = file.createGroup("/liftingline");
-            }
-            else
-            {
-                liftingLineGroup = file.openGroup("/liftingline");
-            }
+            H5::Group liftingLineGroup = (timestep == 0) ? file.createGroup("/liftingline") : file.openGroup("/liftingline");
 
             std::string liftingTimestepName = "/liftingline/timestep_" + std::to_string(timestep);
             H5::Group liftingTimestepGroup = liftingLineGroup.createGroup(liftingTimestepName);
