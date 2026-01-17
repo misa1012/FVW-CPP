@@ -263,7 +263,7 @@ namespace fvw
                                                    hubRotationSequence[0], hubRotationSequence[1],
                                                    hubRotationSequence[2], hubRotationSequence[3]};
 
-                for (int i = 0; i < geom.lead.size(); ++i)
+                for (size_t i = 0; i < geom.lead.size(); ++i)
                 {
                     std::vector<double> totalRotseq = {geom.twistTrailing[i]};
                     totalRotseq.insert(totalRotseq.end(), bladeRotseq.begin(), bladeRotseq.end());
@@ -271,7 +271,7 @@ namespace fvw
                     pos.setQuarterAt(b, t, i) = DCMRot(geom.quarter[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
                     pos.setTrailAt(b, t, i) = DCMRot(geom.trail[i], totalRotseq, {}, rseq, 0) + pos.hubAt(t);
                 }
-                for (int i = 0; i < geom.colloc.size(); ++i)
+                for (size_t i = 0; i < geom.colloc.size(); ++i)
                 {
                     std::vector<double> totalRotseq = {geom.twistShedding[i]};
                     totalRotseq.insert(totalRotseq.end(), bladeRotseq.begin(), bladeRotseq.end());

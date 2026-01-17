@@ -1,4 +1,6 @@
 #include "io/postprocess.h"
+#include "io/logger.h"
+#include <H5Cpp.h>
 #include <fstream>
 #include <sstream>
 #include <filesystem>
@@ -8,7 +10,7 @@
 
 namespace fvw
 {
-    void writeWakeToVTK(const Wake &wake, const TurbineParams &turbineParams,
+    void writeWakeToVTK(const Wake &wake,
                         const std::string &outputDir, int timestep)
     {
         // 确保输出目录存在
@@ -58,7 +60,9 @@ namespace fvw
             // 遍历涡量线
             for (const auto &line : lines)
             {
-                if (line.startNodeIdx >= nodes.size() || line.endNodeIdx >= nodes.size())
+                if (line.startNodeIdx < 0 || line.endNodeIdx < 0 || 
+                    static_cast<std::size_t>(line.startNodeIdx) >= nodes.size() || 
+                    static_cast<std::size_t>(line.endNodeIdx) >= nodes.size())
                 {
                     std::cerr << "Warning: Invalid node index in line for blade " << b
                               << ", timestep " << timestep << std::endl;
@@ -100,7 +104,7 @@ namespace fvw
         std::cout << "Wrote VTK file: " << filename.str() << std::endl;
     }
 
-    void writeWakeToHDF5(const Wake &wake, const PositionData &pos, const PerformanceData &perf, VelICS &velICS, VelBCS &velBCS,
+    void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
                          const TurbineParams &turbineParams, const std::string &outputFile,
                          int timestep)
     {
@@ -322,7 +326,7 @@ namespace fvw
                 // posDataset.write(&posData[0], H5::PredType::NATIVE_DOUBLE);
             }
 
-            // std::cout << "Wrote HDF5 data for timestep " << timestep << " to " << outputFile << std::endl;
+            Logger::log("IO", "Wrote snapshot to: " + outputFile);
         }
         catch (const H5::Exception &e)
         {
@@ -420,7 +424,7 @@ namespace fvw
             }
             timestepsDataset.write(timestepsData.data(), H5::PredType::NATIVE_INT);
 
-            std::cout << "Wrote configuration (geometry and simulation parameters) to HDF5 file" << std::endl;
+            Logger::log("IO", "Wrote initial config/geometry");
         }
         catch (const H5::Exception &e)
         {
@@ -594,7 +598,7 @@ namespace fvw
         // ===================== 计算速度 =====================
         std::cout << "Calculating induced velocity on grid points..." << std::endl;
         std::vector<Vec3> grid_velocities;
-        fvw::computeInducedVelocity(grid_velocities, grid_points, wake, final_timestep, turbineParams, geom, simParams);
+        fvw::computeInducedVelocity(grid_velocities, grid_points, wake, final_timestep, geom, simParams);
 
         // ===================== 输出VTK =====================
         std::cout << "Writing velocity field to VTK file: " << vtk_filepath << std::endl;
@@ -666,7 +670,7 @@ namespace fvw
             read_wake_snapshot(wake, h5_filepath, t, turbineParams);
 
             std::vector<Vec3> induced_velocities_at_probes;
-            fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, turbineParams, geom, simParams);
+            fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, geom, simParams);
 
             for (size_t i = 0; i < probe_points.size(); ++i)
             {

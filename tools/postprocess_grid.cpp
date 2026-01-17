@@ -163,7 +163,7 @@ int main(int argc, char** argv)
 
     std::vector<fvw::Vec3> velocities(grid.points.size(), {0.0, 0.0, 0.0});
     auto t0 = std::chrono::high_resolution_clock::now();
-    fvw::computeInducedVelocity(velocities, grid.points, wake_snapshot, target_timestep, config.turbine, geom, config.sim);
+    fvw::computeInducedVelocity(velocities, grid.points, wake_snapshot, target_timestep, geom, config.sim);
     auto t1 = std::chrono::high_resolution_clock::now();
     auto sec = std::chrono::duration_cast<std::chrono::seconds>(t1 - t0).count();
     std::cout << "Induced velocity computed in " << sec << " s\n";

@@ -9,11 +9,11 @@
 namespace fvw
 {
     // 将 wake 数据写入 VTK 文件
-    void writeWakeToVTK(const Wake &wake, const TurbineParams &turbineParams,
+    void writeWakeToVTK(const Wake &wake,
                         const std::string &outputDir, int timestep);
 
     // 把wake相关的信息写入hdf5
-    void writeWakeToHDF5(const Wake &wake, const PositionData &pos, const PerformanceData &perf, VelICS &velICS, VelBCS &velBCS,
+    void writeWakeToHDF5(const Wake &wake, const PerformanceData &perf,
                          const TurbineParams &turbineParams, const std::string &outputFile,
                          int timestep);
 

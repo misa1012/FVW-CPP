@@ -1,5 +1,7 @@
 #include "models/bem.h"
+#include "io/logger.h"
 #include <iostream>
+#include <cmath>
 #include <iomanip>
 #include <set>
 
@@ -52,7 +54,7 @@ namespace fvw
                 if (printedAirfoils.find(airfoilIdx) == printedAirfoils.end())
                 {
                     std::cout << "[Airfoil data] airfoilIdx=" << airfoilIdx << ", segment i=" << i << ":" << std::endl;
-                    if (airfoilIdx >= 0 && airfoilIdx < airfoils.size())
+                    if (airfoilIdx >= 0 && static_cast<size_t>(airfoilIdx) < airfoils.size())
                     {
                         for (size_t j = 0; j < airfoils[airfoilIdx].aoa.size(); ++j)
                         {
@@ -202,7 +204,7 @@ namespace fvw
 
             if (converged)
             {
-                std::cout << "BEM converged after " << iter + 1 << " iterations" << std::endl;
+                Logger::log("SOLVER", "BEM Converged: " + std::to_string(iter + 1) + " iters");
 
                 // 所有迭代完毕了输出
                 if (if_verbose)

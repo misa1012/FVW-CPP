@@ -41,6 +41,7 @@ set(CORE_SOURCES
     # IO
     src/io/config.cpp
     src/io/postprocess.cpp
+    src/io/logger.cpp
     # Simulation
     src/simulation/simulation_runner.cpp
 )

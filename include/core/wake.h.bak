@@ -84,9 +84,7 @@ namespace fvw
         int addLine(const VortexLine &line)
         {
             // 可以添加检查，确保索引有效
-            if (line.startNodeIdx < 0 || line.endNodeIdx < 0 || 
-                static_cast<std::size_t>(line.startNodeIdx) >= nodes.size() || 
-                static_cast<std::size_t>(line.endNodeIdx) >= nodes.size())
+            if (line.startNodeIdx >= nodes.size() || line.endNodeIdx >= nodes.size() || line.startNodeIdx < 0 || line.endNodeIdx < 0)
             {
                 throw std::out_of_range("VortexLine node index out of range for BladeWake.");
             }
@@ -113,7 +111,7 @@ namespace fvw
         // 确保指定时间步的结构存在，如果不存在则创建
         void ensureTimeStepExists(int timestep)
         {
-            if (timestep < 0 || static_cast<std::size_t>(timestep) >= bladeWakes.size())
+            if (timestep >= bladeWakes.size())
             {
                 bladeWakes.resize(timestep + 1); // 扩展外层 vector
             }
@@ -126,7 +124,7 @@ namespace fvw
         // 获取特定叶片在特定时间步的尾迹数据 (非 const 版本)s
         BladeWake &getBladeWake(int timestep, int blade)
         {
-            if (timestep < 0 || static_cast<std::size_t>(timestep) >= bladeWakes.size() || blade < 0 || blade >= nBlades)
+            if (timestep >= bladeWakes.size() || blade < 0 || blade >= nBlades)
             {
                 throw std::out_of_range("Timestep or blade index out of range in getBladeWake.");
             }
@@ -141,7 +139,7 @@ namespace fvw
         // 获取特定叶片在特定时间步的尾迹数据 (const 版本)
         const BladeWake &getBladeWake(int timestep, int blade) const
         {
-            if (timestep < 0 || static_cast<std::size_t>(timestep) >= bladeWakes.size() || blade < 0 || blade >= nBlades)
+            if (timestep >= bladeWakes.size() || blade < 0 || blade >= nBlades)
             {
                 throw std::out_of_range("Timestep or blade index out of range in getBladeWake (const).");
             }
@@ -183,18 +181,18 @@ namespace fvw
 
     // Biot-Savart function
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const BladeGeometry &geom, const SimParams &simParams);
+                                const Wake &wake, int timestep, const TurbineParams &turbineParams, const BladeGeometry &geom, const SimParams &simParams);
 
     void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                                  const TurbineParams &turbineParams, const PositionData &pos, const SimParams &simParams);
 
     void UpdateWakeVelocities(Wake &wake, const TurbineParams &turbineParams, int timestep, const BladeGeometry &geom, const SimParams &simParams);
 
-    void AdvanceWakeStructure(Wake &wake,
+    void AdvanceWakeStructure(Wake &wake, const BladeGeometry &geom,
                               const TurbineParams &turbineParams, const PositionData &pos, double dt, int currentTimestep);
 
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
-                                 const PositionData &pos, VelBCS &velBCS,
+                                 const TurbineParams &turbineParams, const PositionData &pos, VelBCS &velBCS,
                                  std::vector<AirfoilData> &airfoils, const SimParams &simParams);
 
     void ApplyGammaDecayAndRemoval(Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams);

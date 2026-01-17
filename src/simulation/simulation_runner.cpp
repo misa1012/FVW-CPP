@@ -1,5 +1,6 @@
 #include "simulation/simulation_runner.h"
 #include "io/cli_utils.h"
+#include "io/logger.h"
 
 namespace fvw {
 
@@ -11,28 +12,40 @@ SimulationRunner::SimulationRunner(const PerturbationConfig& pc, const GlobalCon
 }
 
 void SimulationRunner::initialize() {
-    // 1. Resolve output paths
-    m_caseOutDir = reset_case_output(m_rootOutput, m_pc.name, true);
+    // 1. Create case output directory
+    m_caseOutDir = (std::filesystem::path(m_rootOutput) / m_pc.name).string();
+    std::filesystem::create_directories(m_caseOutDir);
     m_h5Filepath = (std::filesystem::path(m_caseOutDir) / "wake.h5").string();
+
+    // 2. Initialize Logger
+    Logger::init(m_caseOutDir + "/simulation.log");
+    Logger::info("Case", m_pc.name);
+    Logger::info("Output Dir", m_caseOutDir);
     
-    cli::print_header("Case: " + m_pc.name);
-    cli::print_info("Output Dir", m_caseOutDir);
-    
-    // 2. Resolve resource paths
+    // 3. Resolve resource paths
     resolve_paths();
 
-    // 3. Apply perturbation
+    // 4. Apply perturbation
     apply_perturbation();
 
-    // 4. Load resources (Geometry, Airfoils)
+    // 5. Load resources (Geometry, Airfoils)
     load_resources();
-    cli::print_info("Turbine", m_turbineParams.model);
-    cli::print_info("Wind Speed", std::to_string(m_turbineParams.windSpeed) + " m/s");
+    char buffer[100];
+    snprintf(buffer, sizeof(buffer), "%.2f rad/s (%.1f rpm)", m_turbineParams.omega, m_turbineParams.omega * 60.0 / (2.0 * M_PI));
+    Logger::info("Rotor Speed", buffer);
+    Logger::info("TSR", std::to_string(m_turbineParams.tsr));
+    
+    int num_steps = m_simParams.timesteps - 1;
+    snprintf(buffer, sizeof(buffer), "%.2f s (dt=%.3f s, %d steps)", m_simParams.totalTime, m_simParams.dt, num_steps);
+    Logger::info("Simulation Time", buffer);
+    
+    snprintf(buffer, sizeof(buffer), "%d blades x %d segments", m_turbineParams.nBlades, m_turbineParams.nSegments);
+    Logger::info("Discretization", buffer);
 
-    // 5. Compute derived geometry
+    // 6. Compute derived geometry
     m_geom = computeBladeGeometry(m_turbineParams, m_bladeDef);
 
-    // 6. Allocate state containers
+    // 7. Allocate state containers
     m_pos = std::make_unique<PositionData>(m_turbineParams.nBlades, m_simParams.timesteps,
                           m_turbineParams.nSegments + 1, m_turbineParams.nSegments);
     
@@ -52,7 +65,7 @@ void SimulationRunner::initialize() {
     InitializeWakeStructure(*m_wake, m_geom, *m_perf, m_turbineParams, *m_pos, m_simParams);
     
     // Write initial state
-    writeWakeToHDF5(*m_wake, *m_pos, *m_perf, *m_velICS, *m_velBCS, m_turbineParams, m_h5Filepath, 0);
+    writeWakeToHDF5(*m_wake, *m_perf, m_turbineParams, m_h5Filepath, 0);
     writeConfigToHDF5(m_geom, m_turbineParams, m_simParams, m_h5Filepath);
 }
 
@@ -66,8 +79,11 @@ void SimulationRunner::run() {
 
     for (int t = 1; t < m_simParams.timesteps; ++t)
     {
-        AdvanceWakeStructure(*m_wake, m_geom, m_turbineParams, *m_pos, m_simParams.dt, t);
-        kuttaJoukowskiIteration(*m_wake, *m_perf, m_geom, *m_axes, m_turbineParams, *m_pos, *m_velBCS, m_airfoils, m_simParams);
+        double currentTime = t * m_simParams.dt;
+        Logger::section_header(currentTime, t);
+
+        AdvanceWakeStructure(*m_wake, m_turbineParams, *m_pos, m_simParams.dt, t);
+        kuttaJoukowskiIteration(*m_wake, *m_perf, m_geom, *m_axes, *m_pos, *m_velBCS, m_airfoils, m_simParams);
 
         if (m_simParams.vortexModel == VortexModelType::GammaDecay)
         {
@@ -78,7 +94,7 @@ void SimulationRunner::run() {
 
         if (t % m_simParams.outputFrequency == 0 || t == m_simParams.timesteps - 1)
         {
-            writeWakeToHDF5(*m_wake, *m_pos, *m_perf, *m_velICS, *m_velBCS, m_turbineParams, m_h5Filepath, t);
+            writeWakeToHDF5(*m_wake, *m_perf, m_turbineParams, m_h5Filepath, t);
         }
 
         // Update progress bar every 10 steps or if done
@@ -110,7 +126,8 @@ void SimulationRunner::finalize(bool projectToGrid, bool computeProbes) {
         runProbeCalculation(m_h5Filepath, probe_csv_filepath, m_turbineParams, m_simParams, m_geom);
     }
     
-    std::cout << "\n[END] Case '" << m_pc.name << "' completed." << std::endl;
+    Logger::info("Case '" + m_pc.name + "' completed.");
+    Logger::close();
 }
 
 // --- Helpers ---
