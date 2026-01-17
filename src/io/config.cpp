@@ -101,6 +101,11 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     config.sim.cutoffParam = simJson["cutoffParam"].as_double();
     config.sim.coreType = parseCoreType(simJson["coreType"].as_string());
     config.sim.vortexModel = parseVortexModel(simJson["vortexModel"].as_string());
+
+    // BEM Solver Settings (Optional, with defaults)
+    if (simJson.contains("bemTolerance")) config.sim.bemTolerance = simJson["bemTolerance"].as_double();
+    if (simJson.contains("bemMaxIterations")) config.sim.bemMaxIterations = simJson["bemMaxIterations"].as_int();
+    if (simJson.contains("bemRelaxation")) config.sim.bemRelaxation = simJson["bemRelaxation"].as_double();
     
     // Calculate derived timesteps (including t=0)
     config.sim.timesteps = static_cast<int>(config.sim.totalTime / config.sim.dt) + 1;

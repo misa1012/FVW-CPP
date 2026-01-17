@@ -122,11 +122,11 @@ namespace fvw
         }
 
         // Compute ICS velocities using center difference and wind speed
+        std::vector<Vec3> bound_t(simParams.timesteps);
         for (int b = 0; b < turbineParams.nBlades; ++b)
         {
             for (int i = 0; i < turbineParams.nSegments; ++i)
             {
-                std::vector<Vec3> bound_t(simParams.timesteps);
                 for (int t = 0; t < simParams.timesteps; ++t)
                 {
                     bound_t[t] = pos.boundAt(b, t, i);

@@ -54,7 +54,7 @@ namespace fvw
                         static_cast<size_t>(line.startNodeIdx) >= nodes.size() || 
                         static_cast<size_t>(line.endNodeIdx) >= nodes.size())
                     {
-                        std::cerr << "Warning: Invalid node index encountered in computeInducedVelocity for blade " << b << ", timestep " << timestep << std::endl;
+                        // std::cerr << "Warning: Invalid node index encountered in computeInducedVelocity for blade " << b << ", timestep " << timestep << std::endl;
                         continue; // 跳过这条无效线段
                     }
 
@@ -72,7 +72,7 @@ namespace fvw
                         double l_squared = l_vec.norm_squared();
                         if (l_squared < 1e-12)
                         {
-                            std::cerr << "Warning: The line is smaller than 1e-12" << std::endl;
+                            // std::cerr << "Warning: The line is smaller than 1e-12" << std::endl;
                             continue; // 跳过长度为零的线段
                         }
                         smoothing_term = simParams.cutoffParam * simParams.cutoffParam * l_squared;

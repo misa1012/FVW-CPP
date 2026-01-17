@@ -60,7 +60,7 @@ void SimulationRunner::initialize() {
     computePositions(*m_pos, m_simParams, m_turbineParams, m_geom);
     computeVelICS(*m_velICS, *m_pos, m_simParams, m_turbineParams);
     computeVelBCS(*m_velBCS, *m_velICS, *m_axes, *m_pos, m_simParams, m_turbineParams);
-    computeBEM(*m_perf, m_geom, m_turbineParams, m_airfoils);
+    computeBEM(*m_perf, m_geom, m_turbineParams, m_airfoils, m_simParams);
 
     InitializeWakeStructure(*m_wake, m_geom, *m_perf, m_turbineParams, *m_pos, m_simParams);
     

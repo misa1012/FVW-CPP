@@ -10,7 +10,7 @@ namespace fvw
 {
     void computeBEM(PerformanceData &perf,
                     const BladeGeometry &geom, const TurbineParams &turbineParams,
-                    const std::vector<AirfoilData> &airfoils);
+                    const std::vector<AirfoilData> &airfoils, const SimParams &simParams);
 
 } // namespace fvw
 

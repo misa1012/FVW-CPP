@@ -9,3 +9,7 @@ results/
 
 # 忽略临时文件
 tmp/
+
+# Python cache
+__pycache__/
+*.pyc

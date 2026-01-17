@@ -9,16 +9,14 @@ namespace fvw
 {
     void computeBEM(PerformanceData &perf,
                     const BladeGeometry &geom, const TurbineParams &turbineParams,
-                    const std::vector<AirfoilData> &airfoils)
+                    const std::vector<AirfoilData> &airfoils, const SimParams &simParams)
     {
-        // 定义一些开关
-        bool if_InitialGuess = true;
-        bool if_verbose = false;
+        // Settings from SimParams
+        const double tolBEM = simParams.bemTolerance;
+        const int maxIterBEM = simParams.bemMaxIterations;
+        const double weightFactor = simParams.bemRelaxation;
 
-        // BEM相关的参数
-        const double tolBEM = 1e-4;
-        const int maxIterBEM = 200;
-        const double weightFactor = 0.2;
+        bool if_InitialGuess = true;
 
         // 读取物理参数
         double windSpeed = turbineParams.windSpeed;
@@ -38,35 +36,7 @@ namespace fvw
             solidity[i] = (turbineParams.nBlades * geom.chordShedding[i]) / (2 * pi * geom.rShedding[i]);
         }
 
-        if (if_verbose)
-        {
-            std::cout << std::fixed << std::setprecision(6);
-            std::cout << "[Blade geometry] twist values:" << std::endl;
-            for (int i = 0; i < perf.getShed(); ++i)
-            {
-                std::cout << "i=" << std::setw(2) << i << ", twist=" << std::setw(10) << geom.twistShedding[i] << std::endl;
-            }
 
-            std::set<int> printedAirfoils;
-            for (int i = 0; i < perf.getShed(); ++i)
-            {
-                int airfoilIdx = geom.airfoilIndex[i];
-                if (printedAirfoils.find(airfoilIdx) == printedAirfoils.end())
-                {
-                    std::cout << "[Airfoil data] airfoilIdx=" << airfoilIdx << ", segment i=" << i << ":" << std::endl;
-                    if (airfoilIdx >= 0 && static_cast<size_t>(airfoilIdx) < airfoils.size())
-                    {
-                        for (size_t j = 0; j < airfoils[airfoilIdx].aoa.size(); ++j)
-                        {
-                            std::cout << "  aoa=" << std::setw(10) << airfoils[airfoilIdx].aoa[j]
-                                      << ", cl=" << std::setw(10) << airfoils[airfoilIdx].cl[j]
-                                      << ", cd=" << std::setw(10) << airfoils[airfoilIdx].cd[j] << std::endl;
-                        }
-                    }
-                    printedAirfoils.insert(airfoilIdx);
-                }
-            }
-        }
 
         if (if_InitialGuess)
         {
@@ -140,14 +110,7 @@ namespace fvw
                         }
                         perf.setAoaAt(b, t, i) = aoa;
 
-                        if (if_verbose && t == 0 && b == 0)
-                        {
-                            std::cout << "[BEM debug] i=" << std::setw(2) << i
-                                      << ", phi=" << std::setw(10) << (phi * 180.0 / M_PI)
-                                      << ", a=" << std::setw(10) << a[idx]
-                                      << ", ap=" << std::setw(10) << ap[idx]
-                                      << ", twist=" << std::setw(10) << (-geom.twistShedding[i]) << std::endl;
-                        }
+
 
                         int airfoilIdx = geom.airfoilIndex[i];
                         perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
@@ -207,32 +170,7 @@ namespace fvw
                 Logger::log("SOLVER", "BEM Converged: " + std::to_string(iter + 1) + " iters");
 
                 // 所有迭代完毕了输出
-                if (if_verbose)
-                {
-                    std::cout << "windSpeed=" << turbineParams.windSpeed << ", omega=" << turbineParams.omega << std::endl;
 
-                    std::cout << std::fixed << std::setprecision(6);
-                    std::cout << "[BEM calculation] geometric values (nBlades=" << turbineParams.nBlades << "):" << std::endl;
-                    for (int i = 0; i < perf.getShed(); ++i)
-                    {
-                        std::cout << "i=" << std::setw(2) << i
-                                  << ", r=" << std::setw(10) << geom.rShedding[i]
-                                  << ", chord=" << std::setw(10) << geom.chordShedding[i]
-                                  << ", solidity=" << std::setw(10) << solidity[i] << std::endl;
-                    }
-
-                    // 输出 t=0, b=0 的 aoa, cl, cd
-                    std::cout << "[BEM calculation] aerodynamic values (b=0, t=0):" << std::endl;
-                    for (int i = 0; i < perf.getShed(); ++i)
-                    {
-                        std::cout << "i=" << std::setw(2) << i
-                                  << ", r=" << std::setw(10) << geom.rShedding[i]
-                                  << ", aoa=" << std::setw(10) << perf.aoaAt(0, 0, i)
-                                  << ", cl=" << std::setw(10) << perf.clAt(0, 0, i)
-                                  << ", cd=" << std::setw(10) << perf.cdAt(0, 0, i)
-                                  << ", airfoilIdx=" << std::setw(3) << geom.airfoilIndex[i] << std::endl;
-                    }
-                }
 
                 break;
             }
