@@ -3,7 +3,7 @@
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
-#SBATCH --time=02:00:00
+#SBATCH --time=04:00:00
 #SBATCH --output=slurm-%j.out
 #SBATCH --partition=short
 
@@ -41,7 +41,7 @@ export OMP_DISPLAY_ENV=true
 cd $SLURM_SUBMIT_DIR
 
 EXECUTABLE="./build/fvw_cpp"
-CONFIG="config.json"
+CONFIG="config_ntnu.json"
 
 if [ ! -f "$EXECUTABLE" ]; then
     echo "Error: Executable $EXECUTABLE not found!"

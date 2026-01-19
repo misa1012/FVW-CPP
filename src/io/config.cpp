@@ -65,7 +65,10 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
             // Populate defaults
             if (defaults.contains("rTip")) config.turbine.rTip = defaults["rTip"].as_double();
             if (defaults.contains("rHub")) config.turbine.rHub = defaults["rHub"].as_double();
-            if (defaults.contains("hubHeight")) config.turbine.hubHeight = defaults["hubHeight"].as_double();
+            if (defaults.contains("hubHeight")) {
+                config.turbine.hubHeight = defaults["hubHeight"].as_double();
+                std::cout << "  - Loaded Default Hub Height: " << config.turbine.hubHeight << " m" << std::endl;
+            }
             if (defaults.contains("nBlades")) config.turbine.nBlades = defaults["nBlades"].as_int();
 
         } catch (const std::exception& e) {
@@ -78,7 +81,10 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (turbineJson.contains("rho")) config.turbine.rho = turbineJson["rho"].as_double();
     if (turbineJson.contains("rHub")) config.turbine.rHub = turbineJson["rHub"].as_double();
     if (turbineJson.contains("rTip")) config.turbine.rTip = turbineJson["rTip"].as_double();
-    if (turbineJson.contains("hubHeight")) config.turbine.hubHeight = turbineJson["hubHeight"].as_double();
+    if (turbineJson.contains("hubHeight")) {
+        config.turbine.hubHeight = turbineJson["hubHeight"].as_double();
+        std::cout << "  - Configuration Overriding Hub Height: " << config.turbine.hubHeight << " m" << std::endl;
+    }
     if (turbineJson.contains("nBlades")) config.turbine.nBlades = turbineJson["nBlades"].as_int();
     if (turbineJson.contains("nSegments")) config.turbine.nSegments = turbineJson["nSegments"].as_int();
     if (turbineJson.contains("tsr")) config.turbine.tsr = turbineJson["tsr"].as_double();
@@ -127,6 +133,13 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (simJson.contains("bemTolerance")) config.sim.bemTolerance = simJson["bemTolerance"].as_double();
     if (simJson.contains("bemMaxIterations")) config.sim.bemMaxIterations = simJson["bemMaxIterations"].as_int();
     if (simJson.contains("bemRelaxation")) config.sim.bemRelaxation = simJson["bemRelaxation"].as_double();
+
+    // Probe Settings (Optional)
+    if (simJson.contains("probeFrequency")) config.sim.probeFrequency = simJson["probeFrequency"].as_int();
+    else config.sim.probeFrequency = config.sim.outputFrequency; // Default to output frequency
+    
+    if (simJson.contains("computeProbes")) config.sim.computeProbes = simJson["computeProbes"].as_bool();
+    else config.sim.computeProbes = false; // Default to false
     
     // Calculate derived timesteps (including t=0)
     config.sim.timesteps = static_cast<int>(config.sim.totalTime / config.sim.dt) + 1;

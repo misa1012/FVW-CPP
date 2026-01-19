@@ -1,0 +1,27 @@
+{
+    "turbine": {
+        "model": "NTNU",
+        "windSpeed": 10.0,
+        "rho": 1.225,
+        "nSegments": 18,
+        "tsr": 6.0
+    },
+    "simulation": {
+        "stepsPerRevolution": 100,
+        "numRevolutions": 40.0,
+        "outputFrequency": 10,
+        "probeFrequency": 400,
+        "computeProbes": true,
+        "coreType": "ChordBasedCore",
+        "cutoffParam": 0.1,
+        "vortexModel": "Constant"
+    },
+    "perturbations": [
+        {
+            "name": "NTNU_Baseline",
+            "type": "None",
+            "amplitude": 0.0,
+            "freqFactor": 0.0
+        }
+    ]
+}

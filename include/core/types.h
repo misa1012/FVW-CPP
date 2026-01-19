@@ -57,6 +57,10 @@ namespace fvw
         // If > 0, dt and totalTime will be calculated automatically
         int stepsPerRevolution = 0;
         double numRevolutions = 0.0;
+        
+        // Post-processing
+        int probeFrequency = 0; // Frequency of probe calculation
+        bool computeProbes = false; // Whether to run probes
     };
 
     // 风机物理参数
@@ -67,7 +71,7 @@ namespace fvw
         double rho;
         double rHub;
         double rTip;
-        double hubHeight; // Added for post-processing
+        double hubHeight = 90.0; // Added for post-processing, default NREL 5MW
         int nBlades;
         int nSegments;
         double tsr;

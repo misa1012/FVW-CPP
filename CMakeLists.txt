@@ -102,8 +102,13 @@ option(BUILD_TOOL_PROBES "Build probe sampler" OFF)
 option(BUILD_TOOL_DOWNSTREAM "Build downstream velocity calculator" OFF)
 
 if(BUILD_TOOL_GRID)
-    add_executable(postprocess_grid tools/postprocess_grid.cpp)
-    target_link_libraries(postprocess_grid PRIVATE fvw_core)
+  # Post-processing tool
+add_executable(postprocess_grid tools/postprocess_grid.cpp)
+target_link_libraries(postprocess_grid PRIVATE fvw_core)
+
+# Manual Probe Calculation
+add_executable(postprocess_probes_manual tools/postprocess_probes_manual.cpp)
+target_link_libraries(postprocess_probes_manual PRIVATE fvw_core)
 endif()
 
 if(BUILD_TOOL_PROBES)

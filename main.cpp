@@ -55,7 +55,7 @@ int main(int argc, char *argv[]) {
 
     // 4. Run Cases
     const bool projectToGrid = false; 
-    const bool computeProbes = false; 
+    const bool computeProbes = config.sim.computeProbes; 
 
     auto batch_start = std::chrono::high_resolution_clock::now();
     

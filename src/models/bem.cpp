@@ -16,167 +16,160 @@ namespace fvw
         const int maxIterBEM = simParams.bemMaxIterations;
         const double weightFactor = simParams.bemRelaxation;
 
-        bool if_InitialGuess = true;
-
-        // 读取物理参数
+        // Reading physical parameters
         double windSpeed = turbineParams.windSpeed;
         double omega = turbineParams.omega;
         const double pi = M_PI;
 
-        // 初始化局部变量
-        std::vector<double> a(perf.getBlades() * perf.getTimesteps() * perf.getShed(), 0.0);
-        std::vector<double> ap(perf.getBlades() * perf.getTimesteps() * perf.getShed(), 0.0);
-        std::vector<double> a0(perf.getBlades() * perf.getTimesteps() * perf.getShed());
-        std::vector<double> ap0(perf.getBlades() * perf.getTimesteps() * perf.getShed());
-        std::vector<double> solidity(perf.getShed());
+        // --- 1D Solver storage (for one blade, one timestep) ---
+        int nShed = perf.getShed();
+        std::vector<double> a(nShed, 0.0);
+        std::vector<double> ap(nShed, 0.0);
+        std::vector<double> a0(nShed);
+        std::vector<double> ap0(nShed);
+        std::vector<double> solidity(nShed);
 
-        // 计算 solidity：表示某一径向位置的局部叶片面积相对于环形面积的比例
-        for (int i = 0; i < perf.getShed(); ++i)
+        // Pre-calculate solidity
+        for (int i = 0; i < nShed; ++i)
         {
             solidity[i] = (turbineParams.nBlades * geom.chordShedding[i]) / (2 * pi * geom.rShedding[i]);
         }
 
-
-
-        if (if_InitialGuess)
+        // --- Initial Guess (Vectorized for segments) ---
+        for (int i = 0; i < nShed; ++i)
         {
-            for (int b = 0; b < perf.getBlades(); ++b)
+            double lambda_r = omega * geom.rShedding[i] / windSpeed;
+            double twist = -geom.twistShedding[i] * pi / 180.0;
+            double expr = 4.0 - 4.0 * pi * lambda_r * solidity[i] +
+                          pi * lambda_r * lambda_r * solidity[i] * (8.0 * twist + pi * solidity[i]);
+            
+            if (expr < 0.0 || std::isnan(expr))
             {
-                for (int t = 0; t < perf.getTimesteps(); ++t)
-                {
-                    for (int i = 0; i < perf.getShed(); ++i)
-                    {
-                        int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
-                        double lambda_r = turbineParams.omega * geom.rShedding[i] / turbineParams.windSpeed;
-                        double twist = -geom.twistShedding[i] * pi / 180.0;
-                        double expr = 4.0 - 4.0 * pi * lambda_r * solidity[i] +
-                                      pi * lambda_r * lambda_r * solidity[i] * (8.0 * twist + pi * solidity[i]);
-                        if (expr < 0.0 || std::isnan(expr))
-                        {
-                            a[idx] = 0.33;
-                            std::cerr << "[Warning] Invalid sqrt_expr at i=" << i << ", expr=" << expr << ", set a=0.33" << std::endl;
-                        }
-                        else
-                        {
-                            a[idx] = 0.25 * (2.0 + pi * lambda_r * solidity[i] - std::sqrt(expr));
-                        }
-                        ap[idx] = 0.0;
-                        if (std::isnan(a[idx]) || std::isinf(a[idx]))
-                        {
-                            a[idx] = 0.33;
-                            std::cerr << "[Warning] Initial a NaN/Inf at i=" << i << ", set a=0.33" << std::endl;
-                        }
-                    }
-                }
+                a[i] = 0.33;
+                // Only log warning once per segment if needed, or suppress
+                 std::cerr << "[Warning] Invalid sqrt_expr at i=" << i << ", expr=" << expr << ", set a=0.33" << std::endl;
+            }
+            else
+            {
+                a[i] = 0.25 * (2.0 + pi * lambda_r * solidity[i] - std::sqrt(expr));
+            }
+            ap[i] = 0.0;
+            
+            if (std::isnan(a[i]) || std::isinf(a[i]))
+            {
+                a[i] = 0.33;
+                std::cerr << "[Warning] Initial a NaN/Inf at i=" << i << ", set a=0.33" << std::endl;
             }
         }
 
-        // BEM 迭代
+        // --- BEM Iteration (Vectorized for segments) ---
+        // We iterate for all segments together until ALL converge (simplest approach for vectorization)
+        // Or strictly, we keep iterating.
+        
+        // Storage for results to broadcast later
+        std::vector<double> final_aoa(nShed);
+        std::vector<double> final_cl(nShed);
+        std::vector<double> final_cd(nShed);
+
         for (int iter = 0; iter < maxIterBEM; ++iter)
         {
-            bool converged = true;
+            bool global_converged = true;
 
-            for (int b = 0; b < perf.getBlades(); ++b)
+            for (int i = 0; i < nShed; ++i)
             {
-                for (int t = 0; t < perf.getTimesteps(); ++t)
-                {
-                    for (int i = 0; i < perf.getShed(); ++i)
-                    {
-                        int idx = b * perf.getTimesteps() * perf.getShed() + t * perf.getShed() + i;
+                // Save old values
+                a0[i] = a[i];
+                ap0[i] = ap[i];
 
-                        // 保存旧值
-                        a0[idx] = a[idx];
-                        ap0[idx] = ap[idx];
+                double r = geom.rShedding[i];
+                double twist = -1 * geom.twistShedding[i] * M_PI / 180.0; 
 
-                        double r = geom.rShedding[i];
-                        double twist = -1 * geom.twistShedding[i] * M_PI / 180.0; // 转换为弧度
-
-                        if (std::isnan(a[idx]) || std::isnan(ap[idx]) || std::isinf(a[idx]) || std::isinf(ap[idx]))
-                        {
-                            a[idx] = 0.33;
-                            ap[idx] = 0.0;
-                            std::cerr << "[Warning] Reset a, ap at i=" << i << " due to NaN/Inf" << std::endl;
-                        }
-
-                        double phi = std::atan2(windSpeed * (1.0 - a[idx]), omega * r * (1.0 + ap[idx]));
-                        // 计算迎角
-                        double aoa = (phi - twist) * 180.0 / M_PI;
-
-                        if (std::isnan(aoa) || std::abs(aoa) == 180.0)
-                        {
-                            aoa = 0.0;
-                            std::cerr << "[Warning] AOA reset to 0 at i=" << i << ", phi=" << (phi * 180.0 / M_PI)
-                                      << ", a=" << a[idx] << ", ap=" << ap[idx] << std::endl;
-                        }
-                        perf.setAoaAt(b, t, i) = aoa;
-
-
-
-                        int airfoilIdx = geom.airfoilIndex[i];
-                        perf.setClAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
-                        perf.setCdAt(b, t, i) = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
-
-                        double cl = perf.clAt(b, t, i);
-                        double cd = perf.cdAt(b, t, i);
-
-                        // tip loss factor
-                        double ftip = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (turbineParams.rTip - geom.rShedding[i]) / (2.0 * geom.rShedding[i] * std::sin(phi))));
-                        double fhub = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (geom.rShedding[i] - turbineParams.rHub) / (2.0 * turbineParams.rHub * std::sin(phi))));
-                        double f = ftip * fhub;
-                        if (std::isnan(f) || f <= 0.0)
-                        {
-                            f = 1.0;
-                            std::cerr << "[Warning] Reset f at i=" << i << " due to NaN/negative" << std::endl;
-                        }
-
-                        // 推力系数
-                        double ct = solidity[i] * (1.0 - a[idx]) * (1.0 - a[idx]) *
-                                    (cl * std::cos(phi) + cd * std::sin(phi)) /
-                                    (std::sin(phi) * std::sin(phi));
-
-                        // 更新 a
-                        double denom = solidity[i] * (cl * std::cos(phi) + cd * std::sin(phi));
-                        double a_new = denom > 1e-10 ? 1.0 / (1.0 + 4.0 * f * std::sin(phi) * std::sin(phi) / denom) : a[idx];
-                        if (ct > 0.96 * f)
-                        {
-                            a_new = (18.0 * f - 20.0 - 3.0 * std::sqrt(ct * (50.0 - 36.0 * f) + 12.0 * f * (3.0 * f - 4.0))) /
-                                    (36.0 * f - 50.0);
-                        }
-
-                        // 更新 ap
-                        double ap_new = denom > 1e-10 ? 1.0 / (4.0 * f * std::cos(phi) * std::sin(phi) /
-                                                                   (solidity[i] * (cl * std::sin(phi) - cd * std::cos(phi))) -
-                                                               1.0)
-                                                      : ap[idx];
-
-                        // 残差
-                        double da = std::abs(a_new - a0[idx]);
-                        double dap = std::abs(ap_new - ap0[idx]);
-
-                        // 加权更新
-                        a[idx] = (1.0 - weightFactor) * a[idx] + weightFactor * a_new;
-                        ap[idx] = (1.0 - weightFactor) * ap[idx] + weightFactor * ap_new;
-
-                        if (da > tolBEM || dap > tolBEM)
-                        {
-                            converged = false;
-                        }
-                    }
+                // Sanity check
+                if (std::isnan(a[i]) || std::isnan(ap[i])) {
+                    a[i] = 0.33; ap[i] = 0.0;
                 }
+
+                double phi = std::atan2(windSpeed * (1.0 - a[i]), omega * r * (1.0 + ap[i]));
+                double aoa = (phi - twist) * 180.0 / M_PI;
+
+                if (std::isnan(aoa) || std::abs(aoa) == 180.0) aoa = 0.0;
+
+                // Lookup airfoil
+                int airfoilIdx = geom.airfoilIndex[i];
+                double cl = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa);
+                double cd = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa);
+                
+                // Store temporarily
+                final_aoa[i] = aoa;
+                final_cl[i] = cl;
+                final_cd[i] = cd;
+
+                // Tip/Hub Loss
+                double ftip = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (turbineParams.rTip - geom.rShedding[i]) / (2.0 * geom.rShedding[i] * std::sin(phi))));
+                double fhub = 2.0 / pi * std::acos(std::exp(-turbineParams.nBlades * (geom.rShedding[i] - turbineParams.rHub) / (2.0 * turbineParams.rHub * std::sin(phi))));
+                double f = ftip * fhub;
+                if (std::isnan(f) || f <= 0.0) f = 1.0; 
+
+                // Thrust Coeff
+                double ct = solidity[i] * (1.0 - a[i]) * (1.0 - a[i]) *
+                            (cl * std::cos(phi) + cd * std::sin(phi)) /
+                            (std::sin(phi) * std::sin(phi));
+
+                // Update a
+                double denom = solidity[i] * (cl * std::cos(phi) + cd * std::sin(phi));
+                double a_new = denom > 1e-10 ? 1.0 / (1.0 + 4.0 * f * std::sin(phi) * std::sin(phi) / denom) : a[i];
+                
+                // Glauert correction
+                if (ct > 0.96 * f)
+                {
+                    a_new = (18.0 * f - 20.0 - 3.0 * std::sqrt(ct * (50.0 - 36.0 * f) + 12.0 * f * (3.0 * f - 4.0))) /
+                            (36.0 * f - 50.0);
+                }
+
+                // Update ap
+                double ap_new = denom > 1e-10 ? 1.0 / (4.0 * f * std::cos(phi) * std::sin(phi) /
+                                                           (solidity[i] * (cl * std::sin(phi) - cd * std::cos(phi))) -
+                                                       1.0)
+                                              : ap[i];
+
+                // Relaxation
+                double da = std::abs(a_new - a0[i]);
+                double dap = std::abs(ap_new - ap0[i]);
+
+                a[i] = (1.0 - weightFactor) * a[i] + weightFactor * a_new;
+                ap[i] = (1.0 - weightFactor) * ap[i] + weightFactor * ap_new;
+
+                if (da > tolBEM || dap > tolBEM) global_converged = false;
             }
 
-            if (converged)
-            {
+            if (global_converged) {
                 Logger::log("SOLVER", "BEM Converged: " + std::to_string(iter + 1) + " iters");
-
-                // 所有迭代完毕了输出
-
-
                 break;
             }
-            if (iter == maxIterBEM - 1)
-            {
+            if (iter == maxIterBEM - 1) {
                 std::cerr << "Warning: BEM failed to converge after " << maxIterBEM << " iterations" << std::endl;
+            }
+        }
+
+
+        // --- Broadcast Results to PerformanceData (All blades, All timesteps) ---
+        for (int b = 0; b < perf.getBlades(); ++b)
+        {
+            for (int t = 0; t < perf.getTimesteps(); ++t)
+            {
+                for (int i = 0; i < nShed; ++i)
+                {
+                    perf.setAoaAt(b, t, i) = final_aoa[i];
+                    perf.setClAt(b, t, i) = final_cl[i];
+                    perf.setCdAt(b, t, i) = final_cd[i];
+                    
+                    // We can also store induced velocities if PerformanceData requires them, 
+                    // but standard init focuses on AoA/Cl/Cd for the first wake step.
+                    // If bound gamma is needed:
+                    // Gamma = 0.5 * W * c * Cl (This logic might be inside KuttaJoukowski, 
+                    // but if needed here we can compute it if we knew W, relative velocity).
+                    // Typically BEM init sets the "Target" AoA/Cl/Cd.
+                }
             }
         }
     }

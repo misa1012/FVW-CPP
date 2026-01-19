@@ -619,56 +619,171 @@ namespace fvw
                              const BladeGeometry &geom)
     {
         double D = turbineParams.rTip * 2.0;
+        double hubHeight = turbineParams.hubHeight; // Use actual hub height
 
-        // 2. 定义你的“虚拟探针”位置
-        std::vector<Vec3> probe_points;
-        double y_probe = 0.0;
-        double z_probe = (turbineParams.hubHeight > 1.0 ? turbineParams.hubHeight : 90.0) + 50.0; // z=Hub+50m
-        std::vector<double> x_locations_D = {0.0, 0.5, 1.0, 1.5, 2.0, 2.5, 3.0};
-        for (double x_D : x_locations_D)
-        {
-            probe_points.push_back({x_D * D, y_probe, z_probe});
+        struct ProbePoint {
+            std::string profileName;
+            Vec3 pos;
+            double normalizedPos; // r/R or x/D for sorting/plotting
+        };
+        std::vector<ProbePoint> probes;
+
+        // 1. Define Sampling Sets (Matching ALM-LES)
+        // Horizontal profiles (h_xD) at z = HubHeight, y in [-1.001, 1.001] (approx -1.12D to 1.12D)
+        // Vertical profiles (v_xD) at y = 0, z in [0, 1.7] (approx 0 to 1.9D)
+        // Centerline
+
+        // Range 0.5D to 8.5D in steps of 0.5D
+        for (int i = 1; i <= 17; ++i) {
+            double x_d = i * 0.5;
+            double x_pos = x_d * D;
+            
+            std::string h_name = "h_" + std::to_string(i) + "_5D"; // e.g. h_1_5D (logic needs adjustment for exact naming)
+            // Fix naming to match ALM style roughly: h_0_5D, h_1D, h_1_5D...
+            std::stringstream ss_h;
+            if (i % 2 != 0) ss_h << "h_" << (i/2) << "_5D";
+            else ss_h << "h_" << (i/2) << "D";
+            std::string h_profile_name = ss_h.str();
+
+            std::stringstream ss_v;
+            if (i % 2 != 0) ss_v << "v_" << (i/2) << "_5D";
+            else ss_v << "v_" << (i/2) << "D";
+            std::string v_profile_name = ss_v.str();
+
+            // Horizontal Line: 100 points from y= -1.001 to 1.001
+            // Scaling 1.001/0.894 = 1.12 D. 
+            // We'll use -1.2D to 1.2D to be safe or match exactly (-1.12D)
+            int nPoints = 100;
+            double y_start = -1.2 * D; // Slightly wider coverage
+            double y_end = 1.2 * D;
+            
+            for(int k=0; k<nPoints; ++k) {
+                double t = (double)k / (nPoints - 1);
+                double y = y_start + t * (y_end - y_start);
+                probes.push_back({h_profile_name, {x_pos, y, hubHeight}, y/D});
+            }
+
+            // Vertical Line: centered at hubHeight
+            double z_start = hubHeight - 1.2 * D;
+            double z_end = hubHeight + 1.2 * D;
+            for(int k=0; k<nPoints; ++k) {
+                double t = (double)k / (nPoints - 1);
+                double z = z_start + t * (z_end - z_start);
+                probes.push_back({v_profile_name, {x_pos, 0.0, z}, (z - hubHeight)/D}); 
+            }
         }
 
-        // 3. 准备输出文件
+        // Centerline
+        {
+            int nPoints = 200;
+            double x_start = 0.5 * D;
+            double x_end = 9.0 * D;
+            for(int k=0; k<nPoints; ++k) {
+                double t = (double)k / (nPoints - 1);
+                double x = x_start + t * (x_end - x_start);
+                probes.push_back({"centerline", {x, 0.0, hubHeight}, x/D});
+            }
+        }
+
+        // 3. Prepare positions vector for computation
+        std::vector<Vec3> compute_points;
+        compute_points.reserve(probes.size());
+        for(const auto& p : probes) compute_points.push_back(p.pos);
+
+        // 4. Output File
         std::ofstream outfile(csv_filepath);
         if (!outfile.is_open())
         {
             std::cerr << "Error: Unable to open CSV file for probe output: " << csv_filepath << std::endl;
             return;
         }
-        outfile << "Timestep,Time,ProbeID,ProbeX,ProbeY,ProbeZ,U_ind,V_ind,W_ind\n";
-        outfile << std::fixed << std::setprecision(6);
+        // Added ProfileName for easier plotting
+        outfile << "Timestep,Time,ProfileName,X,Y,Z,U_ind,V_ind,W_ind\n";
+        
+        // 5. Loop through timesteps
+        // Only output the LAST timestep for comparison usually, or specified frequency.
+        // For wake verification, usually the last quasi-steady state is needed.
+        // We will stick to the configured loop but maybe filter? 
+        // User asked for "data in wake", normally time-averaged or instantaneous at end.
+        // Let's output samples according to outputFrequency.
 
-        // 4. 循环遍历HDF5中的所有时间步
         int start_step = 0;
         int end_step = simParams.timesteps - 1;
         int step_interval = simParams.outputFrequency;
-        double dt = simParams.dt;
-
-        // 创建一个Wake对象
+        
+        // Only process the last 10% or just the final step to save space?
+        // ALM `sample` runs on the fly. 
+        // Let's process every `step_interval` as requested. 
+        
         Wake wake(turbineParams.nBlades, turbineParams.nSegments, turbineParams.nSegments + 1);
+
+        // Optimization: Only load and process the simulation steps if valid
+        // To save time, if user just wants end result, we could optimize, but safety first.
+        
+        // Configured probe interval
+        int probe_interval = simParams.probeFrequency > 0 ? simParams.probeFrequency : simParams.outputFrequency;
+
+        std::cout << "Starting probe calculation for " << probes.size() << " points (Frequency: every " << probe_interval << " steps)..." << std::endl;
 
         for (int t = start_step; t <= end_step; t += step_interval)
         {
-            read_wake_snapshot(wake, h5_filepath, t, turbineParams);
+            // Only calculate probes at the desired interval (or last step)
+            // But always respect the file's step_interval
+            if (t % probe_interval != 0 && t != end_step) {
+                continue;
+            }
 
-            std::vector<Vec3> induced_velocities_at_probes;
-            fvw::computeInducedVelocity(induced_velocities_at_probes, probe_points, wake, t, geom, simParams);
+            // Simple check to skip early transient if needed, but let's keep all
+            try {
+                read_wake_snapshot(wake, h5_filepath, t, turbineParams);
+                size_t totalNodes = 0;
+                double sumGamma = 0.0;
+                size_t countGamma = 0;
+                double minX=1e9, maxX=-1e9, minY=1e9, maxY=-1e9, minZ=1e9, maxZ=-1e9;
+                for(int b=0; b<turbineParams.nBlades; ++b) {
+                   auto& bw = wake.getBladeWake(t, b);
+                   totalNodes += bw.nodes.size();
+                   for(auto& l : bw.lines) {
+                       sumGamma += std::abs(l.gamma);
+                       countGamma++;
+                   }
+                   if (!bw.nodes.empty()) {
+                       for(auto& n : bw.nodes) {
+                           minX = std::min(minX, n.position.x); maxX = std::max(maxX, n.position.x);
+                           minY = std::min(minY, n.position.y); maxY = std::max(maxY, n.position.y);
+                           minZ = std::min(minZ, n.position.z); maxZ = std::max(maxZ, n.position.z);
+                       }
+                   }
+                }
+                std::cout << "DEBUG: Timestep " << t << " loaded " << totalNodes << " nodes. Avg Abs Gamma: " 
+                          << (countGamma > 0 ? sumGamma/countGamma : 0.0) << "\n"
+                          << "       Bounds X[" << minX << ", " << maxX << "] "
+                          << "Y[" << minY << ", " << maxY << "] "
+                          << "Z[" << minZ << ", " << maxZ << "]" << std::endl;
+            } catch (...) {
+                continue; // Skip if timestep missing
+            }
 
-            for (size_t i = 0; i < probe_points.size(); ++i)
+            std::vector<Vec3> induced_velocities;
+            // Batch compute
+            fvw::computeInducedVelocity(induced_velocities, compute_points, wake, t, geom, simParams);
+
+            double time = t * simParams.dt;
+            for (size_t i = 0; i < probes.size(); ++i)
             {
-                const auto &p = probe_points[i];
-                const auto &vel = induced_velocities_at_probes[i];
-
-                outfile << t << "," << t * dt << "," << i << ","
-                        << p.x << "," << p.y << "," << p.z << ","
+                const auto &p = probes[i];
+                const auto &vel = induced_velocities[i];
+                
+                outfile << t << "," << time << "," 
+                        << p.profileName << ","
+                        << p.pos.x << "," << p.pos.y << "," << p.pos.z << ","
                         << vel.x << "," << vel.y << "," << vel.z << "\n";
             }
+            if (t % 10 == 0) std::cout << "Processed probes for timestep " << t << std::endl;
         }
 
         outfile.close();
-        std::cout << "\n探针后处理完成，结果已保存至 " << csv_filepath << std::endl;
+        std::cout << "\nProbe post-processing completed. Saved to " << csv_filepath << std::endl;
     }
 
 } // namespace fvw

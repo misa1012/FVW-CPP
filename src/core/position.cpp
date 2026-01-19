@@ -160,7 +160,12 @@ namespace fvw
                           const TurbineParams &turbineParams, const BladeGeometry &geom)
     {
         // Hub and platform
-        Vec3 hubPos(0.0, 0.0, 90.0);
+        // Use configured hub height (default 90.0 if not set)
+        Vec3 hubPos(0.0, 0.0, turbineParams.hubHeight > 0 ? turbineParams.hubHeight : 90.0);
+        if (turbineParams.hubHeight <= 0) {
+             std::cerr << "Warning: Hub height not set or invalid (" << turbineParams.hubHeight 
+                       << "). Defaulting to 90.0 m." << std::endl;
+        }
         for (int t = 0; t < simParams.timesteps; ++t)
         {
             pos.setHubAt(t) = hubPos;
