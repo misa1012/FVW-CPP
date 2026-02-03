@@ -1,54 +1,92 @@
+
 # FVW-CPP
 
-## 代码实现说明
-代码的主要实现在main.cpp
+A free-vortex wake aerodynamic simulation tool for wind turbines, written in C++17 with Python post-processing.
 
-### 第一部分、设置参数
-代码的主要实现，首先是对参数进行设置。
-参数分为
-1. 模拟相关的参数simParams：包括dt和totalTime
-2. Turbine相关的参数turbineParams
+## 🚀 Quick Start
 
-### 第二部分、初始化
-初始化包括
-1. 对叶片几何进行初始化：
-包括了对shed节点和trailing节点的初始化：r, chord和twist
-以及计算叶片前缘，lifting line和后缘的shed和trailing的坐标 （这里的坐标是叶片坐标系下的坐标）
+### 1. Build
+```bash
+mkdir build && cd build
+cmake ..
+make -j
+```
 
-2. 读取翼型dataset的数据
+### 2. Configure
+Use tutorial configs (strict mode: no default config).
+```bash
+tutorials/NTNU/config.json
+tutorials/NREL/config.json
+```
+> 📖 [**Configuration Guide**](docs/configuration.md) - Detailed reference for all settings.
 
-3. 对position进行初始化
-计算前缘，lifting line和后缘的shed和trailing，hub和platform的全局坐标
-该部分主要实现的是DCMRot算法
+### 3. Run
+```bash
+./fvw_cpp tutorials/NTNU/config.json
+```
 
-（本来有删除了的原4.） 对velocity进行初始化 -- 产生了一个疑问，这个真的需要吗？-- 感觉好像不需要啊。删掉了。
+### 4. Analyze
+Use the provided Python scripts to postprocess results.
+> 🐍 [**Python Tools**](tools/python/README.md) - How to use the scripts in `tools/python/`.
 
-4. 初始化performance
-初始化aoa, cl, cd的空的列表
+---
 
-### 第三部分、BEM - 用于找到初始的aoa和cl、cd
-BEM的原理在于它要同时满足动量理论和叶素理论：
-动量理论：诱导因子决定了速度场
-叶素理论：cl和cd取决于aoa
+## 📚 Documentation
 
-所以计算步骤为，需要迭代计算：
-1. 猜测一个induction factor诱导因子
-2. 根据该值计算phi（入流角度）和angle of attack
-3. 根据aoa的值，插值airfoil data找到cl, cd （叶素理论）
-4. 优化：tip loss correction 
-5. 根据cl, cd计算出推力系数，进行计算出induction factor（动量理论）
-6. 根据该新计算的induction factor计算之前的（需要用weight factor更新）
+统一入口：
+- 📚 [**Docs Index**](docs/README.md)
 
-BEM更新的变量是perf
-BEM的作用：通过BEM计算出的CL （这个在下一个部分实现：计算出初始环量
+## Repository Structure
 
--- 以上已进行验证 --
-验证结论是：interpolate得到的数值和python中的不太一样，其它验证是一致的
+- **`main.cpp`**: Main simulation entry point.
+- **`src/` & `include/`**: C++ Core library source code.
+- **`python/`**: Post-processing library (`fvw`) and scripts.
+- **`data/`**: Turbine geometry and airfoil data (e.g., NREL 5MW).
+- **`tools/`**: Standalone post-processing executables (VTK grid generation, etc.).
 
+---
 
-### 第四部分、更新wake （还在开发中）
-4.1 首先是初始化 initializeWake
-这个版本：感觉wake的结构不太行，感觉得改一下。可能也不需要每时每刻都存储。
+# FVW-CPP (中文版)
 
+一个风力机自由涡尾迹气动仿真工具，使用 C++17 编写，并配有 Python 后处理工具。
 
-## 变量解释
+## 🚀 快速开始
+
+### 1. 编译
+```bash
+mkdir build && cd build
+cmake ..
+make -j
+```
+
+### 2. 配置
+使用教程配置（严格模式：不再默认读取根目录配置）。
+```bash
+tutorials/NTNU/config.json
+tutorials/NREL/config.json
+```
+> 📖 [**配置指南**](docs/configuration.md) - 所有设置项的详细参考。
+
+### 3. 运行
+```bash
+./fvw_cpp tutorials/NTNU/config.json
+```
+
+### 4. 分析
+使用提供的 Python 脚本进行后处理。
+> 🐍 [**Python 工具**](tools/python/README.md) - 如何使用 `tools/python/` 中的脚本。
+
+---
+
+## 📚 文档
+
+统一入口：
+- 📚 [**文档目录**](docs/README.md)
+
+## 仓库结构
+
+- **`main.cpp`**: 仿真主程序入口。
+- **`src/` & `include/`**: C++ 核心库源码。
+- **`python/`**: 后处理库 (`fvw`) 和脚本。
+- **`data/`**: 风机几何和翼型数据 (如 NREL 5MW)。
+- **`tools/`**: 独立的后处理可执行文件 (VTK 网格生成等)。

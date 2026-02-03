@@ -1,90 +1,120 @@
 cmake_minimum_required(VERSION 3.10)
 project(FVW_Simulation)
 
+# --- 1. Compiler Settings ---
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Profiling Option
 option(ENABLE_PROFILING "Enable gprof profiling" OFF)
 
-# Executable options
-option(BUILD_FVW_CPP "Build fvw_cpp executable" ON)
-option(BUILD_POSTPROCESS_PROBES "Build postprocess_probes executable" OFF)
-option(BUILD_POSTPROCESS_GRID "Build postprocess_grid executable" OFF)
-
-# ----------------------------------------
-find_package(HDF5 REQUIRED COMPONENTS CXX)
-if(HDF5_FOUND)
-  include_directories(${HDF5_INCLUDE_DIRS})
-else()
-  message(FATAL_ERROR "HDF5 not found. Please install libhdf5-dev.")
-endif()
-
-include_directories(${CMAKE_SOURCE_DIR}/include)
-include_directories(${CMAKE_SOURCE_DIR}/validation/include)
-
-set(SHARED_SOURCES
-  src/utils.cpp
-  src/airfoil.cpp
-  src/geometry.cpp
-  src/position.cpp
-  src/velocity.cpp
-  src/performance.cpp
-  src/bem.cpp
-  src/wake.cpp
-  src/postprocess.cpp
-)
-
-set(VALIDATION_SOURCES
-  validation/src/validate.cpp
-  validation/src/validate_geometry.cpp
-  validation/src/validate_position.cpp
-)
-
-find_package(OpenMP)
-
-if(BUILD_FVW_CPP)
-  add_executable(fvw_cpp main.cpp ${SHARED_SOURCES} ${VALIDATION_SOURCES})
-  target_link_libraries(fvw_cpp PRIVATE ${HDF5_CXX_LIBRARIES})
-  if(OpenMP_CXX_FOUND)
-    target_compile_options(fvw_cpp PRIVATE ${OpenMP_CXX_FLAGS})
-    target_link_libraries(fvw_cpp PRIVATE ${OpenMP_CXX_LIBRARIES})
-  endif()
-  if(ENABLE_PROFILING AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(fvw_cpp PRIVATE -pg)
-    target_link_options(fvw_cpp PRIVATE -pg)
-  endif()
-  if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-    target_compile_options(fvw_cpp PRIVATE -Wall -Wextra)
-  elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
-    target_compile_options(fvw_cpp PRIVATE /W4)
-  endif()
-endif()
-
-if(BUILD_POSTPROCESS_PROBES)
-  add_executable(postprocess_probes postprocess_probes.cpp ${SHARED_SOURCES})
-  target_link_libraries(postprocess_probes PRIVATE ${HDF5_CXX_LIBRARIES})
-  if(OpenMP_CXX_FOUND)
-    target_compile_options(postprocess_probes PRIVATE ${OpenMP_CXX_FLAGS})
-    target_link_libraries(postprocess_probes PRIVATE ${OpenMP_CXX_LIBRARIES})
-  endif()
-endif()
-
-if(BUILD_POSTPROCESS_GRID)
-  add_executable(postprocess_grid postprocess_grid.cpp ${SHARED_SOURCES})
-  target_link_libraries(postprocess_grid PRIVATE ${HDF5_CXX_LIBRARIES})
-  if(OpenMP_CXX_FOUND)
-    target_compile_options(postprocess_grid PRIVATE ${OpenMP_CXX_FLAGS})
-    target_link_libraries(postprocess_grid PRIVATE ${OpenMP_CXX_LIBRARIES})
-  endif()
-endif()
-
+# Build Type Defaults
 if(NOT CMAKE_BUILD_TYPE)
   set(CMAKE_BUILD_TYPE Release)
   message(STATUS "No build type specified, defaulting to 'Release'.")
 endif()
 
+message(STATUS "Build type: ${CMAKE_BUILD_TYPE}")
+
+# Compiler Flags
 set(CMAKE_CXX_FLAGS_RELEASE "${CMAKE_CXX_FLAGS_RELEASE} -O3 -DNDEBUG")
 set(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -O0 -g")
 set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DNDEBUG")
 
-message(STATUS "Build type is: ${CMAKE_BUILD_TYPE}")
+# --- 2. Dependencies ---
+find_package(HDF5 REQUIRED COMPONENTS CXX)
+find_package(OpenMP REQUIRED)
+
+# --- 3. Core Library (fvw_core) ---
+# Groups: Core, Models, IO, Simulation, Validation
+set(CORE_SOURCES
+    # Core
+    src/core/utils.cpp
+    src/core/geometry.cpp
+    src/core/position.cpp
+    src/core/velocity.cpp
+    src/core/wake.cpp
+    # Models
+    src/models/airfoil.cpp
+    src/models/performance.cpp
+    src/models/bem.cpp
+    # IO
+    src/io/config.cpp
+    src/io/postprocess.cpp
+    src/io/logger.cpp
+    # Simulation
+    src/simulation/simulation_runner.cpp
+)
+
+add_library(fvw_core STATIC ${CORE_SOURCES})
+
+# Optional Validation Library
+option(BUILD_VALIDATION "Build validation library" OFF)
+if(BUILD_VALIDATION)
+    add_library(fvw_validation STATIC
+        src/validation/validate.cpp
+        src/validation/validate_geometry.cpp
+        src/validation/validate_position.cpp
+    )
+    target_link_libraries(fvw_validation PUBLIC fvw_core)
+endif()
+
+# Include Directories
+# PUBLIC means any target linking fvw_core will inherently include these paths
+target_include_directories(fvw_core PUBLIC 
+    ${CMAKE_SOURCE_DIR}/include
+    ${CMAKE_SOURCE_DIR}/include/validation
+    ${HDF5_INCLUDE_DIRS}
+)
+
+# Link Libraries
+target_link_libraries(fvw_core PUBLIC ${HDF5_CXX_LIBRARIES})
+
+if(OpenMP_CXX_FOUND)
+    target_link_libraries(fvw_core PUBLIC OpenMP::OpenMP_CXX)
+endif()
+
+if(ENABLE_PROFILING AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(fvw_core PUBLIC -pg)
+    target_link_options(fvw_core PUBLIC -pg)
+endif()
+
+# Compiler Warnings
+if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+    target_compile_options(fvw_core PRIVATE -Wall -Wextra)
+elseif(CMAKE_CXX_COMPILER_ID MATCHES "MSVC")
+    target_compile_options(fvw_core PRIVATE /W4)
+endif()
+
+# --- 4. Executables ---
+
+# Main Simulation
+option(BUILD_FVW_CPP "Build main simulation executable" ON)
+if(BUILD_FVW_CPP)
+    add_executable(fvw_cpp main.cpp)
+    target_link_libraries(fvw_cpp PRIVATE fvw_core)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(fvw_cpp PRIVATE OpenMP::OpenMP_CXX)
+    endif()
+endif()
+
+# Post-processing Tools
+option(BUILD_TOOL_GRID "Build VTK grid generator" ON)
+option(BUILD_TOOL_SAMPLING "Build sampling tool" ON)
+option(BUILD_TOOL_DOWNSTREAM "Build downstream velocity calculator" OFF)
+
+if(BUILD_TOOL_GRID)
+  # Post-processing tool
+  add_executable(postprocess_grid tools/postprocess_grid.cpp)
+  target_link_libraries(postprocess_grid PRIVATE fvw_core)
+endif()
+
+if(BUILD_TOOL_SAMPLING)
+    add_executable(postprocess_sampling tools/postprocess_sampling.cpp)
+    target_link_libraries(postprocess_sampling PRIVATE fvw_core)
+endif()
+
+if(BUILD_TOOL_DOWNSTREAM)
+    add_executable(compute_downstream_velocity tools/compute_downstream.cpp)
+    target_link_libraries(compute_downstream_velocity PRIVATE fvw_core)
+endif()
