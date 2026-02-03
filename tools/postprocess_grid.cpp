@@ -112,16 +112,36 @@ int main(int argc, char** argv)
         return 1;
     }
 
-    const int target_timestep = config.sim.timesteps - 1;
-
-    // Load geometry (logic similar to others, reusable)
-    std::string turbine_model = "NREL_5MW"; // should be from config
-    std::string data_root = "data/" + turbine_model;
-    std::string geometry_path = data_root + "/blade_geometry.csv";
-    if (!fs::exists(geometry_path)) {
-        data_root = "../data/" + turbine_model;
-        geometry_path = data_root + "/blade_geometry.csv";
+    int target_timestep = config.sim.timesteps - 1;
+    if (argc >= 5) {
+        target_timestep = std::stoi(argv[4]);
     }
+    
+    double grid_res = 2.0; // Default to 2.0m to save space/time
+    if (argc >= 6) {
+        grid_res = std::stod(argv[5]);
+    }
+
+    int slice_mode = 0;
+    if (argc >= 7) {
+        slice_mode = std::stoi(argv[6]);
+    }
+
+    // Load geometry
+    std::string turbine_model = config.turbine.model; // Use model from config
+    if (turbine_model.empty()) turbine_model = "NREL_5MW"; // Fallback
+
+    std::string data_root = "data/" + turbine_model;
+    if (!fs::exists(data_root)) {
+        if (fs::exists("../data/" + turbine_model)) {
+            data_root = "../data/" + turbine_model;
+        } else {
+             std::cerr << "[WARN] Data directory for model " << turbine_model << " not found. Trying default locations.\n";
+        }
+    }
+    
+    std::string geometry_path = data_root + "/blade_geometry.csv";
+    std::cout << "Loading geometry from: " << geometry_path << "\n";
 
     // Load geometry from file
     auto bladeDef = fvw::loadBladeDefinition(geometry_path);
@@ -133,21 +153,49 @@ int main(int argc, char** argv)
     std::cout << "Blade geometry computed.\n";
 
     // ====== 统一 1 m 网格（3D）======
+    double x_start_factor = -1.0;
+    if (argc >= 8) {
+        x_start_factor = std::stod(argv[7]);
+    }
+
+    double x_end_factor = 6.0; // Default expanded to 6D
+    if (argc >= 9) {
+        x_end_factor = std::stod(argv[8]);
+    }
+
     const double D = 2.0 * config.turbine.rTip;
     const double hub_height = config.turbine.hubHeight;
-    const double h = 1.0; // 1 m
+    const double h = grid_res;
 
-    const double x_start = -1.0 * D;
-    const double x_end   =  3.0 * D;
+    const double x_start = x_start_factor * D;
+    const double x_end   = x_end_factor * D;
+    
+    std::cout << "[DEBUG] Grid Bounds Factors: " << x_start_factor << " to " << x_end_factor << " (D=" << D << ")\n";
+    std::cout << "[DEBUG] Grid Physical X: " << x_start << " to " << x_end << " m\n";
 
-    const double half_span = 1.5 * D / 2.0; // 0.75D
-    const double y_min = -half_span;
-    const double y_max =  half_span;
+    const double half_span = 3.0 * D / 2.0; // 1.5D (Covers -D to D with margin)
+    
+    // Default Volume
+    double y_min = -half_span;
+    double y_max =  half_span;
+    double z_min = hub_height - half_span;
+    double z_max = hub_height + half_span;
+    
+    if (slice_mode == 1) {
+        // Horizontal Slice (Z fixed)
+        z_min = hub_height;
+        z_max = hub_height;
+        std::cout << "Slice Mode 1: Horizontal Plane (Z = " << hub_height << ")\n";
+    } else if (slice_mode == 2) {
+        // Vertical Slice (Y fixed)
+        y_min = 0.0;
+        y_max = 0.0;
+        std::cout << "Slice Mode 2: Vertical Plane (Y = 0.0)\n";
+    } else {
+        std::cout << "Slice Mode 0: Full 3D Volume\n";
+    }
 
-    const double z_min = hub_height - half_span;
-    const double z_max = hub_height + half_span;
-
-    std::cout << "Building 1 m uniform 3D grid...\n";
+    std::cout << "Building grid...\n";
     Grid3D grid = build_uniform_grid_3d(x_start, x_end, y_min, y_max, z_min, z_max, h);
     std::cout << "Grid: Nx=" << grid.Nx << " Ny=" << grid.Ny << " Nz=" << grid.Nz
               << "  total=" << grid.points.size() << "\n";
@@ -157,8 +205,25 @@ int main(int argc, char** argv)
     fvw::read_wake_snapshot(wake_snapshot, h5_path.string(), target_timestep, config.turbine);
 
     if (wake_snapshot.bladeWakes.empty()) {
-        std::cerr << "[ERR] Failed to load wake data from " << h5_path << "\n";
+        std::cerr << "[ERR] Wake snapshot has no blade wakes (unexpected structure).\n";
         return 1;
+    }
+
+    size_t totalNodes = 0;
+    size_t totalLines = 0;
+    double totalGamma = 0.0;
+    for (int b = 0; b < config.turbine.nBlades; ++b) {
+        const auto& bw = wake_snapshot.getBladeWake(target_timestep, b);
+        totalNodes += bw.nodes.size();
+        totalLines += bw.lines.size();
+        for (const auto& line : bw.lines) {
+            totalGamma += std::abs(line.gamma);
+        }
+    }
+    std::cout << "[DEBUG] Loaded Wake: " << totalNodes << " nodes, " << totalLines << " lines. Total |Gamma|: " << totalGamma << "\n";
+
+    if (totalNodes == 0 || totalLines == 0) {
+        std::cerr << "[WARN] Wake appears empty! Induced velocity will be ZERO.\n";
     }
 
     std::vector<fvw::Vec3> velocities(grid.points.size(), {0.0, 0.0, 0.0});
@@ -167,6 +232,13 @@ int main(int argc, char** argv)
     auto t1 = std::chrono::high_resolution_clock::now();
     auto sec = std::chrono::duration_cast<std::chrono::seconds>(t1 - t0).count();
     std::cout << "Induced velocity computed in " << sec << " s\n";
+
+    // Add free stream velocity
+    double U_inf = config.turbine.windSpeed;
+    std::cout << "Adding free stream velocity: " << U_inf << " m/s\n";
+    for (auto &v : velocities) {
+        v.x += U_inf;
+    }
 
     // ====== 写 VTK ======
     write_field_to_vtk(out_vtk, grid.points, velocities, grid.Nx, grid.Ny, grid.Nz);

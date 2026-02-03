@@ -1,0 +1,23 @@
+{
+    "wake_h5": "results/NREL_5MW/wake.h5",
+    "config": "docs/tutorials/NREL/config.json",
+    "output_csv": "results/NREL_5MW/sampling_output.csv",
+    "mode": "average",
+    "units": "m",
+    "average": {
+        "start_step": 450,
+        "end_step": 500,
+        "stride": 5
+    },
+    "points": [
+        { "name": "hub", "x": 126.0, "y": 0.0, "z": 90.0 }
+    ],
+    "lines": [
+        {
+            "name": "centerline",
+            "start": [126.0, 0.0, 90.0],
+            "end": [756.0, 0.0, 90.0],
+            "n": 30
+        }
+    ]
+}

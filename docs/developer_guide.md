@@ -34,7 +34,7 @@ Manages the Lagrangian wake representation.
 - Handles convection and shedding steps.
 
 #### `ConfigLoader` (`src/io/config.cpp`)
-Parses `config.json` and loads model-specific defaults (e.g., `data/NREL_5MW/turbine_params.json`).
+Parses a specified config JSON (e.g., `tutorials/NREL/config.json`) and loads model-specific defaults (e.g., `data/NREL_5MW/turbine_params.json`).
 
 ## Build System
 
@@ -101,7 +101,7 @@ make
 - 处理尾迹的对流 (Convection) 和脱落 (Shedding) 步骤。
 
 #### `ConfigLoader` (`src/io/config.cpp`)
-解析 `config.json` 并加载模型特定的默认参数 (例如 `data/NREL_5MW/turbine_params.json`)。
+解析指定的配置文件（例如 `tutorials/NREL/config.json`）并加载模型特定的默认参数 (例如 `data/NREL_5MW/turbine_params.json`)。
 
 ## 构建系统
 

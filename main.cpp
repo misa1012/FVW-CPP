@@ -45,21 +45,47 @@ int main(int argc, char *argv[]) {
     std::cout << "This is a Debug build." << std::endl;
 #endif
 
+    // Read raw config text for traceability
+    std::string config_text;
+    {
+        std::ifstream cfg_in(config_path);
+        if (cfg_in) {
+            std::ostringstream ss;
+            ss << cfg_in.rdbuf();
+            config_text = ss.str();
+        }
+    }
+
     // 3. Setup Global Output
-    // Get the directory where the executable is located
+    std::filesystem::path output_path;
     std::filesystem::path exe_path = std::filesystem::canonical("/proc/self/exe");
-    std::filesystem::path project_root = exe_path.parent_path().parent_path(); // build/fvw_cpp -> FVW-CPP
-    std::filesystem::path output_path = project_root / "results";
+    if (argc > 2) {
+        output_path = argv[2];
+    } else {
+        std::filesystem::path project_root = exe_path.parent_path().parent_path(); // build/fvw_cpp -> FVW-CPP
+        output_path = project_root / "results";
+    }
     std::filesystem::create_directories(output_path);
     const std::string rootOutput = output_path.string();
 
     // 4. Run Cases
-    const bool projectToGrid = false; 
-    const bool computeProbes = config.sim.computeProbes; 
-
     auto batch_start = std::chrono::high_resolution_clock::now();
     
     std::vector<std::string> completed_cases;
+
+    // Build run metadata (shared across all cases)
+    fvw::RunMetadata runMeta;
+    runMeta.config_path = config_path;
+    runMeta.config_text = config_text;
+    runMeta.exe_path = exe_path.string();
+    {
+        std::ostringstream args;
+        for (int i = 0; i < argc; ++i) {
+            if (i > 0) args << " ";
+            args << argv[i];
+        }
+        runMeta.cli_args = args.str();
+    }
 
     if (config.perturbations.empty()) {
         fvw::cli::print_warning("No perturbations defined. Running default baseline.");
@@ -67,19 +93,19 @@ int main(int argc, char *argv[]) {
         default_pc.name = "default_baseline";
         default_pc.type = fvw::PerturbationType::None;
         
-        fvw::SimulationRunner runner(default_pc, config, rootOutput);
+        fvw::SimulationRunner runner(default_pc, config, rootOutput, runMeta);
         runner.initialize();
         runner.run();
-        runner.finalize(projectToGrid, computeProbes);
+        runner.finalize();
         completed_cases.push_back("default_baseline");
     } else {
         std::cout << fvw::cli::BOLD << "Starting batch of " << config.perturbations.size() << " cases." << fvw::cli::RESET << "\n";
         for (const auto &pc : config.perturbations)
         {
-            fvw::SimulationRunner runner(pc, config, rootOutput);
+            fvw::SimulationRunner runner(pc, config, rootOutput, runMeta);
             runner.initialize();
             runner.run();
-            runner.finalize(projectToGrid, computeProbes);
+            runner.finalize();
             completed_cases.push_back(pc.name);
         }
     }

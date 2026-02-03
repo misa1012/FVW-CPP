@@ -4,15 +4,19 @@
         "windSpeed": 11.4,
         "rho": 1.225,
         "nSegments": 18,
-        "tsr": 7.0
+        "tsr": 7.0,
+        "segmentDistribution": "Cosine"
     },
     "simulation": {
-        "stepsPerRevolution": 100,
-        "numRevolutions": 5.0,
-        "outputFrequency": 1,
-        "coreType": "ChordBasedCore",
+        "stepsPerRevolution": 80,
+        "numRevolutions": 15.0,
+        "outputFrequency": 10,
+        "coreType": "VanGarrel",
         "cutoffParam": 0.1,
-        "vortexModel": "Constant"
+        "vortexModel": "Constant",
+        "bemTolerance": 0.0001,
+        "bemMaxIterations": 200,
+        "bemRelaxation": 0.2
     },
     "perturbations": [
         {

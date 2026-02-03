@@ -29,6 +29,13 @@ namespace {
         if (s == "AsymmetricStaticPitch") return PerturbationType::AsymmetricStaticPitch;
         throw std::runtime_error("Unknown PerturbationType: " + s);
     }
+
+    // Helper to map string to SegmentDistribution
+    SegmentDistribution parseSegmentDistribution(const std::string& s) {
+        if (s == "Linear") return SegmentDistribution::Linear;
+        if (s == "Cosine") return SegmentDistribution::Cosine;
+        throw std::runtime_error("Unknown SegmentDistribution: " + s);
+    }
 }
 
 GlobalConfig ConfigLoader::load(const std::string& filepath) {
@@ -36,16 +43,20 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     
     // Parse JSON file
     fvw::json::Value root = fvw::json::parse_file(filepath);
+    bool log_verbose = false;
+    if (root.contains("simulation") && root["simulation"].contains("logVerbose")) {
+        log_verbose = root["simulation"]["logVerbose"].as_bool();
+    }
 
     // --- Turbine Params ---
     if (!root.contains("turbine")) throw std::runtime_error("Missing 'turbine' section in config");
     const auto& turbineJson = root["turbine"];
 
-    // 1. Identify Model
-    std::string modelName = "NREL_5MW"; // default fallback or required? 
-    if (turbineJson.contains("model")) {
-        modelName = turbineJson["model"].as_string();
+    // 1. Identify Model (strict: must be provided)
+    if (!turbineJson.contains("model")) {
+        throw std::runtime_error("Missing required field: turbine.model");
     }
+    std::string modelName = turbineJson["model"].as_string();
     config.turbine.model = modelName;
 
     // 2. Load Defaults from Data File if exists
@@ -58,7 +69,9 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     }
 
     if (std::filesystem::exists(dataPath)) {
-        std::cout << "Loading default turbine parameters from: " << dataPath << std::endl;
+        if (log_verbose) {
+            std::cout << "Loading default turbine parameters from: " << dataPath << std::endl;
+        }
         try {
             fvw::json::Value defaults = fvw::json::parse_file(dataPath);
             
@@ -67,7 +80,9 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
             if (defaults.contains("rHub")) config.turbine.rHub = defaults["rHub"].as_double();
             if (defaults.contains("hubHeight")) {
                 config.turbine.hubHeight = defaults["hubHeight"].as_double();
-                std::cout << "  - Loaded Default Hub Height: " << config.turbine.hubHeight << " m" << std::endl;
+                if (log_verbose) {
+                    std::cout << "  - Loaded Default Hub Height: " << config.turbine.hubHeight << " m" << std::endl;
+                }
             }
             if (defaults.contains("nBlades")) config.turbine.nBlades = defaults["nBlades"].as_int();
 
@@ -77,23 +92,36 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     }
 
     // 3. Overwrite with Config Values (Explicit Override)
-    if (turbineJson.contains("windSpeed")) config.turbine.windSpeed = turbineJson["windSpeed"].as_double();
-    if (turbineJson.contains("rho")) config.turbine.rho = turbineJson["rho"].as_double();
+    if (!turbineJson.contains("windSpeed")) throw std::runtime_error("Missing required field: turbine.windSpeed");
+    if (!turbineJson.contains("rho")) throw std::runtime_error("Missing required field: turbine.rho");
+    if (!turbineJson.contains("nSegments")) throw std::runtime_error("Missing required field: turbine.nSegments");
+    if (!turbineJson.contains("segmentDistribution")) throw std::runtime_error("Missing required field: turbine.segmentDistribution");
+    if (!turbineJson.contains("tsr")) throw std::runtime_error("Missing required field: turbine.tsr");
+
     if (turbineJson.contains("rHub")) config.turbine.rHub = turbineJson["rHub"].as_double();
     if (turbineJson.contains("rTip")) config.turbine.rTip = turbineJson["rTip"].as_double();
-    if (turbineJson.contains("hubHeight")) {
-        config.turbine.hubHeight = turbineJson["hubHeight"].as_double();
-        std::cout << "  - Configuration Overriding Hub Height: " << config.turbine.hubHeight << " m" << std::endl;
-    }
     if (turbineJson.contains("nBlades")) config.turbine.nBlades = turbineJson["nBlades"].as_int();
-    if (turbineJson.contains("nSegments")) config.turbine.nSegments = turbineJson["nSegments"].as_int();
-    if (turbineJson.contains("tsr")) config.turbine.tsr = turbineJson["tsr"].as_double();
+
+    config.turbine.windSpeed = turbineJson["windSpeed"].as_double();
+    config.turbine.rho = turbineJson["rho"].as_double();
+    config.turbine.nSegments = turbineJson["nSegments"].as_int();
+    config.turbine.segmentDistribution = parseSegmentDistribution(turbineJson["segmentDistribution"].as_string());
+    config.turbine.tsr = turbineJson["tsr"].as_double();
     
-    // Validate required fields (if defaults didn't cover them)
-    // windSpeed, nSegments, tsr are unlikely to be in defaults, so usually required.
-    // If they were not set (initially 0 or garbage), we might want to check here.
-    // However, C++ structs without constructor might have garbage.
-    // Assuming user provides valid config.
+    // Validate critical parameters
+    if (config.turbine.rTip <= 0.0) throw std::runtime_error("Critical parameter 'rTip' not set/invalid. Check turbine_params.json.");
+    if (config.turbine.rHub <= 0.0) throw std::runtime_error("Critical parameter 'rHub' not set/invalid. Check turbine_params.json.");
+    if (config.turbine.nBlades <= 0) throw std::runtime_error("Critical parameter 'nBlades' not set/invalid.");
+    if (config.turbine.windSpeed <= 0.0) throw std::runtime_error("Critical parameter 'windSpeed' not set/invalid.");
+    if (config.turbine.rho <= 0.0) throw std::runtime_error("Critical parameter 'rho' not set/invalid.");
+    if (config.turbine.nSegments <= 0) throw std::runtime_error("Critical parameter 'nSegments' not set/invalid.");
+    if (config.turbine.tsr <= 0.0) throw std::runtime_error("Critical parameter 'tsr' not set/invalid.");
+    
+    // Strict requirement: hubHeight must come from data file (or default loaded from there)
+    // We initialized it to -1.0. If it wasn't loaded from defaults, it's invalid.
+    if (config.turbine.hubHeight <= 0.0) {
+        throw std::runtime_error("Critical parameter 'hubHeight' not set. It must be defined in turbine_params.json."); 
+    }
 
     // Calculate derived parameter omega
     config.turbine.omega = config.turbine.tsr * config.turbine.windSpeed / config.turbine.rTip;
@@ -103,7 +131,12 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     const auto& simJson = root["simulation"];
     
     // Check for revolution-based parameters first
-    if (simJson.contains("stepsPerRevolution") && simJson.contains("numRevolutions")) {
+    const bool has_steps = simJson.contains("stepsPerRevolution");
+    const bool has_revs = simJson.contains("numRevolutions");
+    const bool has_dt = simJson.contains("dt");
+    const bool has_total = simJson.contains("totalTime");
+
+    if (has_steps && has_revs) {
         config.sim.stepsPerRevolution = simJson["stepsPerRevolution"].as_int();
         config.sim.numRevolutions = simJson["numRevolutions"].as_double();
         
@@ -111,36 +144,51 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
         double period = 2.0 * M_PI / config.turbine.omega;
         
         // Calculate dt and totalTime from revolution-based parameters
-        config.sim.dt = period / config.sim.stepsPerRevolution;
+        double raw_dt = period / config.sim.stepsPerRevolution;
+        // Enforce fixed precision (6 decimal places) as requested
+        config.sim.dt = std::round(raw_dt * 1000000.0) / 1000000.0;
         config.sim.totalTime = config.sim.numRevolutions * period;
         
-        std::cout << "Using revolution-based parameters: " 
-                  << config.sim.stepsPerRevolution << " steps/rev, "
-                  << config.sim.numRevolutions << " revolutions" << std::endl;
-        std::cout << "Calculated: dt = " << config.sim.dt << " s, totalTime = " 
-                  << config.sim.totalTime << " s" << std::endl;
+        if (log_verbose) {
+            std::cout << "Using revolution-based parameters: " 
+                      << config.sim.stepsPerRevolution << " steps/rev, "
+                      << config.sim.numRevolutions << " revolutions" << std::endl;
+            std::cout << "Calculated: dt = " << config.sim.dt << " s, totalTime = " 
+                      << config.sim.totalTime << " s" << std::endl;
+        }
     } else {
         // Fallback to direct specification
+        if (!(has_dt && has_total)) {
+            throw std::runtime_error("Missing required simulation timing fields: either (stepsPerRevolution & numRevolutions) or (dt & totalTime).");
+        }
         config.sim.dt = simJson["dt"].as_double();
         config.sim.totalTime = simJson["totalTime"].as_double();
     }
+    if (!simJson.contains("outputFrequency")) throw std::runtime_error("Missing required field: simulation.outputFrequency");
+    if (!simJson.contains("cutoffParam")) throw std::runtime_error("Missing required field: simulation.cutoffParam");
+    if (!simJson.contains("coreType")) throw std::runtime_error("Missing required field: simulation.coreType");
+    if (!simJson.contains("vortexModel")) throw std::runtime_error("Missing required field: simulation.vortexModel");
+
     config.sim.outputFrequency = simJson["outputFrequency"].as_int();
+    if (simJson.contains("probeFrequency")) config.sim.probeFrequency = simJson["probeFrequency"].as_int();
+    if (simJson.contains("computeProbes")) config.sim.computeProbes = simJson["computeProbes"].as_bool();
     config.sim.cutoffParam = simJson["cutoffParam"].as_double();
     config.sim.coreType = parseCoreType(simJson["coreType"].as_string());
     config.sim.vortexModel = parseVortexModel(simJson["vortexModel"].as_string());
 
-    // BEM Solver Settings (Optional, with defaults)
-    if (simJson.contains("bemTolerance")) config.sim.bemTolerance = simJson["bemTolerance"].as_double();
-    if (simJson.contains("bemMaxIterations")) config.sim.bemMaxIterations = simJson["bemMaxIterations"].as_int();
-    if (simJson.contains("bemRelaxation")) config.sim.bemRelaxation = simJson["bemRelaxation"].as_double();
+    // BEM Solver Settings (Strict)
+    if (!simJson.contains("bemTolerance")) throw std::runtime_error("Missing required field: simulation.bemTolerance");
+    if (!simJson.contains("bemMaxIterations")) throw std::runtime_error("Missing required field: simulation.bemMaxIterations");
+    if (!simJson.contains("bemRelaxation")) throw std::runtime_error("Missing required field: simulation.bemRelaxation");
+    config.sim.bemTolerance = simJson["bemTolerance"].as_double();
+    config.sim.bemMaxIterations = simJson["bemMaxIterations"].as_int();
+    config.sim.bemRelaxation = simJson["bemRelaxation"].as_double();
 
-    // Probe Settings (Optional)
-    if (simJson.contains("probeFrequency")) config.sim.probeFrequency = simJson["probeFrequency"].as_int();
-    else config.sim.probeFrequency = config.sim.outputFrequency; // Default to output frequency
-    
-    if (simJson.contains("computeProbes")) config.sim.computeProbes = simJson["computeProbes"].as_bool();
-    else config.sim.computeProbes = false; // Default to false
-    
+    // Optional logging settings
+    if (simJson.contains("logStepTiming")) config.sim.logStepTiming = simJson["logStepTiming"].as_bool();
+    if (simJson.contains("logVerbose")) config.sim.logVerbose = simJson["logVerbose"].as_bool();
+    if (simJson.contains("logPerf")) config.sim.logPerf = simJson["logPerf"].as_bool();
+
     // Calculate derived timesteps (including t=0)
     config.sim.timesteps = static_cast<int>(config.sim.totalTime / config.sim.dt) + 1;
 

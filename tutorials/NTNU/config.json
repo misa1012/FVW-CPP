@@ -4,21 +4,23 @@
         "windSpeed": 10.0,
         "rho": 1.225,
         "nSegments": 18,
+        "segmentDistribution": "Cosine",
         "tsr": 6.0
     },
     "simulation": {
-        "stepsPerRevolution": 100,
+        "stepsPerRevolution": 80,
         "numRevolutions": 40.0,
         "outputFrequency": 10,
-        "probeFrequency": 400,
-        "computeProbes": true,
-        "coreType": "ChordBasedCore",
+        "coreType": "VanGarrel",
         "cutoffParam": 0.1,
-        "vortexModel": "Constant"
+        "vortexModel": "Constant",
+        "bemTolerance": 0.0001,
+        "bemMaxIterations": 200,
+        "bemRelaxation": 0.2
     },
     "perturbations": [
         {
-            "name": "NTNU_Baseline",
+            "name": "NTNU",
             "type": "None",
             "amplitude": 0.0,
             "freqFactor": 0.0

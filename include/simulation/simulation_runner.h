@@ -25,9 +25,16 @@
 
 namespace fvw {
 
+struct RunMetadata {
+    std::string config_path;
+    std::string config_text;
+    std::string exe_path;
+    std::string cli_args;
+};
+
 class SimulationRunner {
 public:
-    SimulationRunner(const PerturbationConfig& pc, const GlobalConfig& config, const std::string& rootOutput);
+    SimulationRunner(const PerturbationConfig& pc, const GlobalConfig& config, const std::string& rootOutput, const RunMetadata& runMeta);
     
     // 初始化模拟环境，加载资源
     void initialize();
@@ -35,17 +42,18 @@ public:
     // 运行时间步循环
     void run();
     
-    // 执行结束后的清理或额外后处理（如项目网格和探针）
-    // projectToGrid: 是否执行欧拉网格投影
-    // computeProbes: 是否计算探针点
-    void finalize(bool projectToGrid, bool computeProbes);
+    // 执行结束后的清理或额外后处理
+    void finalize();
 
 private:
     PerturbationConfig m_pc;
     GlobalConfig m_globalConfig;
     std::string m_rootOutput;
+    RunMetadata m_runMeta;
     std::string m_caseOutDir;
     std::string m_h5Filepath;
+    std::string m_dataRoot;
+    double m_totalSimSeconds = 0.0;
 
     // Simulation Objects
     TurbineParams m_turbineParams;
@@ -77,6 +85,7 @@ private:
     void load_resources();
     void apply_perturbation();
     std::string reset_case_output(const std::string &root, const std::string &case_name, bool clean = true);
+    void write_run_manifest();
 };
 
 } // namespace fvw

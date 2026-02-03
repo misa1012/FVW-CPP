@@ -38,6 +38,52 @@ $$ L = \rho |\vec{V}_{rel}| \Gamma \implies \Gamma = \frac{1}{2} |\vec{V}_{rel}|
 
 This forms a non-linear iterative process: $\Gamma$ determines $\vec{V}_{ind}$, $\vec{V}_{ind}$ determines $\alpha$, $\alpha$ determines $C_l$, and $C_l$ determines the new $\Gamma$.
 
+#### Angle of Attack Sign, Twist, and Pitch Conventions
+
+**Angle of attack (AoA) is defined in the Blade Coordinate System (BCS)**. The code projects $\vec{V}_{rel}$ onto the local axes and then computes:
+
+$$ \alpha = \mathrm{atan2}(-V_y, V_x) $$
+
+This is a **sign convention**: we define the positive normal direction as **$N = -\mathbf{b}_{yn}$**, so $V_n = -V_y$ and $\alpha$ is the angle between the chordwise axis and the incoming flow in the chord-normal plane. Do **not** change this formula to “fix” geometry; keep it consistent across all models.
+
+**Twist and pitch affect AoA by rotating the local axes**:
+* **Pitch** rotates the *entire blade* about the spanwise axis; it shifts AoA at all radii by the same sign.
+* **Twist** is a *local* rotation of each airfoil section about the spanwise axis; it changes the local chordwise axis, so the same $\vec{V}_{rel}$ projects to different $(V_x, V_y)$ and yields different AoA.
+
+**Important**: The sign of twist in input files depends on the geometry convention. If a given dataset uses the opposite sign to the code’s convention, **flip the twist sign in the geometry input** rather than changing the AoA formula.
+
+#### ALM-LES vs FVW: Physical Direction and Sign Alignment
+
+To compare AoA between ALM-LES and FVW, align the *physical* axis definitions:
+
+**ALM-LES (Actuator-Line Code)** defines blade-aligned axes as:
+* **$e_2$ (spanwise)**: along the blade (tip direction for `rotationDir = "cw"`; toward root for `"ccw"`).
+* **$e_1$ (tangential)**: opposite rotor rotation; points in the direction of *incoming* rotational flow seen by the blade.
+* **$e_0$ (axial)**: roughly downwind; points in the direction of *incoming* wind (normal to rotor plane, coning included).
+
+ALM then projects the local velocity into these axes:
+* `windVectors.x = e0 · U` (axial)
+* `windVectors.y = e1 · U` **plus** the rotation term $\Omega r \cos(\text{precone})$ (tangential)
+
+And computes:
+$$
+\alpha = \mathrm{atan2}(V_{\text{axial}}, V_{\text{tan}}) - \text{twist} - \text{pitch}
+$$
+
+So **positive twist reduces AoA** in ALM-LES.
+
+**FVW** defines BCS axes from geometry:
+* **$b_x$**: chordwise direction (bound → end)
+* **$b_z$**: spanwise direction (neighbor bound nodes)
+* **$b_y = b_z \times b_x$**: normal
+
+And computes:
+$$
+\alpha = \mathrm{atan2}(-V_y, V_x)
+$$
+
+**Why the sign mismatch appears**: ALM’s AoA is measured from the *rotor-plane tangent direction*, while FVW’s AoA is measured from the *chordwise direction* in BCS. If your geometry’s twist sign is defined opposite to FVW’s coordinate convention, **you must flip twist in the geometry input** before comparing with ALM-LES. Do **not** flip the AoA formula.
+
 ### 1.4 Wake Convection
 According to the Helmholtz vortex theorems, vortex filaments move with the fluid. The update of wake nodes follows the Lagrangian method:
 
@@ -96,15 +142,15 @@ mkdir build && cd build
 cmake ..
 make -j4
 
-# 2. Run (Defaults to ../config.json)
-./fvw_cpp
+# 2. Run (strict mode: specify config path)
+./fvw_cpp tutorials/NTNU/config.json
 
 # 3. Post-Process (Analyze results)
 python tools/python/analyze_instability.py
 ```
 
 ### 3.2 Configuration File
-The main configuration file is `config.json` in the project root. Common modifications:
+Use a specified config file (e.g., `tutorials/NTNU/config.json`). Common modifications:
 *   `turbine.windSpeed`: Modify wind speed
 *   `simulation.dt`: Modify time step
 *   `simulation.totalTime`: Modify total simulation duration
@@ -152,6 +198,52 @@ $$ \vec{V}_{rel} = (\vec{V}_{\infty} + \vec{V}_{ind}) - \vec{V}_{motion} $$
 $$ L = \rho |\vec{V}_{rel}| \Gamma \implies \Gamma = \frac{1}{2} |\vec{V}_{rel}| c C_l(\alpha) $$
 
 这构成了一个非线性迭代过程：$\Gamma$ 决定 $\vec{V}_{ind}$，$\vec{V}_{ind}$ 决定 $\alpha$，$\alpha$ 决定 $C_l$，而 $C_l$ 又决定新的 $\Gamma$。
+
+#### 攻角符号、Twist 与 Pitch 约定
+
+**攻角（AoA）在叶片坐标系（BCS）中定义**。代码先将 $\vec{V}_{rel}$ 投影到局部坐标轴，再计算：
+
+$$ \alpha = \mathrm{atan2}(-V_y, V_x) $$
+
+这是一个**符号约定**：我们定义“正法向”为 **$N = -\mathbf{b}_{yn}$**，因此 $V_n = -V_y$，$\alpha$ 就是弦向与来流在弦-法平面内的夹角。请 **不要** 为了“修正几何”而改动该公式，应保持全模型一致。
+
+**Twist 和 Pitch 通过旋转局部坐标系影响 AoA**：
+* **Pitch**：绕展向轴旋转整个叶片，所有半径位置的 AoA 同向平移。
+* **Twist**：每个截面的局部旋转，改变弦向方向，使同一 $\vec{V}_{rel}$ 在 $(V_x,V_y)$ 上的投影不同，从而改变 AoA。
+
+**重要提示**：Twist 的正负号取决于几何数据的坐标约定。若数据集与代码约定相反，应在几何输入中**翻转 twist 符号**，而不是修改 AoA 的计算公式。
+
+#### ALM-LES 与 FVW：物理方向与符号对齐
+
+对比 ALM-LES 与 FVW 的 AoA 时，必须先对齐**物理方向定义**：
+
+**ALM-LES（Actuator-Line Code）** 的叶片局部坐标轴定义：
+* **$e_2$（展向）**：沿叶片方向（`rotationDir="cw"` 时指向叶尖；`"ccw"` 时指向叶根）
+* **$e_1$（切向）**：与转子旋转方向相反，指向叶片“因旋转看到的来流方向”
+* **$e_0$（轴向）**：大致朝下风向，指向“因风速看到的来流方向”（包含锥角影响）
+
+ALM 将速度投影到该坐标并计算：
+* `windVectors.x = e0 · U`（轴向）
+* `windVectors.y = e1 · U` **加上** 旋转项 $\Omega r \cos(\text{precone})$（切向）
+
+并定义：
+$$
+\alpha = \mathrm{atan2}(V_{\text{axial}}, V_{\text{tan}}) - \text{twist} - \text{pitch}
+$$
+
+因此 **ALM-LES 中正 twist 会降低 AoA**。
+
+**FVW** 中 BCS 坐标为：
+* **$b_x$**：弦向（bound → end）
+* **$b_z$**：展向（相邻 bound 节点差分）
+* **$b_y = b_z \times b_x$**：法向
+
+并使用：
+$$
+\alpha = \mathrm{atan2}(-V_y, V_x)
+$$
+
+**为何会出现符号差异**：ALM 的 AoA 是以**转子平面切向方向**为基准，而 FVW 的 AoA 以**弦向方向**为基准。如果几何数据的 twist 正方向与 FVW 约定相反，则应在几何输入中**翻转 twist**，再与 ALM-LES 对比；不要改 AoA 公式。
 
 ### 1.4 尾迹演化 (Wake Convection)
 根据 Helmholtz 涡定理，涡线随流体运动。尾迹节点的更新遵循拉格朗日法：
@@ -211,15 +303,64 @@ mkdir build && cd build
 cmake ..
 make -j4
 
-# 2. 运行 (默认使用 ../config.json)
-./fvw_cpp
+# 2. 运行（严格模式：需显式指定配置路径）
+./fvw_cpp tutorials/NTNU/config.json
 
 # 3. 后处理 (分析结果)
 python tools/python/analyze_instability.py
 ```
 
+### 3.1 Fn/Ft 的定义（转子坐标系）
+
+为保证与 ALM‑LES 的 `normalForce` / `tangentialForce` 一致，FVW 输出的 `fn` / `ft` 定义为**转子平面法向/切向**的力（单位 N/m），计算步骤如下：
+
+1. **相对速度（叶片坐标系）**  
+   求解器得到叶片坐标系下的相对速度 `V_rel = (Vx, Vy, Vz)`，其中 `x` 为弦向、`y` 为法向、`z` 为展向。  
+   定义：
+   ```
+   V_xy = sqrt(Vx^2 + Vy^2)
+   e = (ex, ey) = (Vx, Vy) / V_xy
+   ```
+
+2. **升阻力（单位长度）**  
+   采用空气动力系数得到单位长度升力/阻力：
+   ```
+   L = 0.5 * rho * V_xy^2 * c * Cl
+   D = 0.5 * rho * V_xy^2 * c * Cd
+   ```
+
+3. **叶片坐标系下的力向量**  
+   升力垂直于相对速度，阻力与相对速度方向相反：
+   ```
+   fx_b = L * (-ey) + D * (-ex)
+   fy_b = L * ( ex) + D * (-ey)
+   ```
+   其中 `fx_b` 为弦向分量，`fy_b` 为法向分量。
+
+4. **转到惯性坐标系**  
+   叶片坐标系基向量 `bxn`（弦向）与 `byn`（法向）由几何和姿态计算得到：
+   ```
+   F_ics = fx_b * bxn + fy_b * byn
+   ```
+
+5. **投影到转子坐标**  
+   取转子轴向 `axis = (-1, 0, 0)`（与来流方向相反，正推力方向），  
+   径向方向 `radial = (bound - hub)` 并投影到转子平面：
+   ```
+   radial.x = 0
+   radial = radial / |radial|
+   tangential = axis × radial
+   ```
+   最终：
+   ```
+   fn = F_ics · axis
+   ft = F_ics · tangential
+   ```
+
+这样定义的 `fn/ft` 与 ALM‑LES 的 `normalForce` / `tangentialForce` 在物理意义上对齐，避免后处理因坐标定义差异导致的偏差。
+
 ### 3.2 配置文件
-主要配置文件位于项目根目录的 `config.json`。常用修改项：
+使用指定的配置文件（例如 `tutorials/NTNU/config.json`）。常用修改项：
 *   `turbine.windSpeed`: 修改风速
 *   `simulation.dt`: 修改时间步长
 *   `simulation.totalTime`: 修改仿真总时长

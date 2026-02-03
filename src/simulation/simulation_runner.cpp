@@ -2,10 +2,121 @@
 #include "io/cli_utils.h"
 #include "io/logger.h"
 
+#include <array>
+#include <ctime>
+#include <fstream>
+#include <iomanip>
+#include <sstream>
+#include <unistd.h>
+
 namespace fvw {
 
-SimulationRunner::SimulationRunner(const PerturbationConfig& pc, const GlobalConfig& config, const std::string& rootOutput)
-    : m_pc(pc), m_globalConfig(config), m_rootOutput(rootOutput)
+namespace {
+std::string json_escape(const std::string& s) {
+    std::string out;
+    out.reserve(s.size());
+    for (char c : s) {
+        switch (c) {
+            case '\"': out += "\\\""; break;
+            case '\\': out += "\\\\"; break;
+            case '\b': out += "\\b"; break;
+            case '\f': out += "\\f"; break;
+            case '\n': out += "\\n"; break;
+            case '\r': out += "\\r"; break;
+            case '\t': out += "\\t"; break;
+            default:
+                if (static_cast<unsigned char>(c) < 0x20) {
+                    std::ostringstream oss;
+                    oss << "\\u" << std::hex << std::uppercase << std::setw(4)
+                        << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(c));
+                    out += oss.str();
+                } else {
+                    out += c;
+                }
+        }
+    }
+    return out;
+}
+
+std::string now_iso8601() {
+    auto now = std::chrono::system_clock::now();
+    std::time_t t = std::chrono::system_clock::to_time_t(now);
+    std::tm tm{};
+    localtime_r(&t, &tm);
+    std::ostringstream oss;
+    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S%z");
+    return oss.str();
+}
+
+std::string get_hostname() {
+    std::array<char, 256> buf{};
+    if (gethostname(buf.data(), buf.size()) == 0) {
+        return std::string(buf.data());
+    }
+    return "unknown";
+}
+
+std::string read_file_trim(const std::filesystem::path& path) {
+    std::ifstream in(path);
+    if (!in) return {};
+    std::ostringstream ss;
+    ss << in.rdbuf();
+    std::string s = ss.str();
+    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
+    return s;
+}
+
+std::string read_git_commit(const std::filesystem::path& project_root) {
+    std::filesystem::path head = project_root / ".git" / "HEAD";
+    if (!std::filesystem::exists(head)) return {};
+    std::string head_content = read_file_trim(head);
+    const std::string ref_prefix = "ref: ";
+    if (head_content.rfind(ref_prefix, 0) == 0) {
+        std::filesystem::path ref_path = project_root / ".git" / head_content.substr(ref_prefix.size());
+        return read_file_trim(ref_path);
+    }
+    return head_content;
+}
+
+const char* to_string(VortexModelType t) {
+    switch (t) {
+        case VortexModelType::Constant: return "Constant";
+        case VortexModelType::GammaDecay: return "GammaDecay";
+    }
+    return "Unknown";
+}
+
+const char* to_string(VortexCoreType t) {
+    switch (t) {
+        case VortexCoreType::VanGarrel: return "VanGarrel";
+        case VortexCoreType::ChordBasedCore: return "ChordBasedCore";
+    }
+    return "Unknown";
+}
+
+const char* to_string(SegmentDistribution t) {
+    switch (t) {
+        case SegmentDistribution::Linear: return "Linear";
+        case SegmentDistribution::Cosine: return "Cosine";
+    }
+    return "Unknown";
+}
+
+const char* to_string(PerturbationType t) {
+    switch (t) {
+        case PerturbationType::None: return "None";
+        case PerturbationType::CollectivePitch: return "CollectivePitch";
+        case PerturbationType::AsymmetricStaticPitch: return "AsymmetricStaticPitch";
+    }
+    return "Unknown";
+}
+} // namespace
+
+SimulationRunner::SimulationRunner(const PerturbationConfig& pc,
+                                   const GlobalConfig& config,
+                                   const std::string& rootOutput,
+                                   const RunMetadata& runMeta)
+    : m_pc(pc), m_globalConfig(config), m_rootOutput(rootOutput), m_runMeta(runMeta)
 {
     m_turbineParams = m_globalConfig.turbine;
     m_simParams = m_globalConfig.sim;
@@ -25,6 +136,9 @@ void SimulationRunner::initialize() {
     // 3. Resolve resource paths
     resolve_paths();
 
+    // Save config and manifest early for traceability
+    write_run_manifest();
+
     // 4. Apply perturbation
     apply_perturbation();
 
@@ -36,7 +150,7 @@ void SimulationRunner::initialize() {
     Logger::info("TSR", std::to_string(m_turbineParams.tsr));
     
     int num_steps = m_simParams.timesteps - 1;
-    snprintf(buffer, sizeof(buffer), "%.2f s (dt=%.3f s, %d steps)", m_simParams.totalTime, m_simParams.dt, num_steps);
+    snprintf(buffer, sizeof(buffer), "%.4f s (dt=%.6f s, %d steps)", m_simParams.totalTime, m_simParams.dt, num_steps);
     Logger::info("Simulation Time", buffer);
     
     snprintf(buffer, sizeof(buffer), "%d blades x %d segments", m_turbineParams.nBlades, m_turbineParams.nSegments);
@@ -80,10 +194,13 @@ void SimulationRunner::run() {
     for (int t = 1; t < m_simParams.timesteps; ++t)
     {
         double currentTime = t * m_simParams.dt;
-        Logger::section_header(currentTime, t);
+        if (m_simParams.logStepTiming || m_simParams.logVerbose) {
+            Logger::section_header(currentTime, t);
+        }
+        auto step_start = std::chrono::high_resolution_clock::now();
 
         AdvanceWakeStructure(*m_wake, m_turbineParams, *m_pos, m_simParams.dt, t);
-        kuttaJoukowskiIteration(*m_wake, *m_perf, m_geom, *m_axes, *m_pos, *m_velBCS, m_airfoils, m_simParams);
+        kuttaJoukowskiIteration(*m_wake, *m_perf, m_geom, *m_axes, *m_pos, *m_velBCS, m_airfoils, m_turbineParams, m_simParams);
 
         if (m_simParams.vortexModel == VortexModelType::GammaDecay)
         {
@@ -97,6 +214,14 @@ void SimulationRunner::run() {
             writeWakeToHDF5(*m_wake, *m_perf, m_turbineParams, m_h5Filepath, t);
         }
 
+        auto step_end = std::chrono::high_resolution_clock::now();
+        if (m_simParams.logStepTiming) {
+            double step_seconds = std::chrono::duration_cast<std::chrono::duration<double>>(step_end - step_start).count();
+            std::ostringstream oss;
+            oss << "Step " << t << " elapsed: " << std::fixed << std::setprecision(6) << step_seconds << " s";
+            Logger::log("TIME", oss.str());
+        }
+
         // Update progress bar every 10 steps or if done
         if (t % 10 == 0 || t == m_simParams.timesteps - 1) {
             auto current_now = std::chrono::high_resolution_clock::now();
@@ -108,25 +233,17 @@ void SimulationRunner::run() {
 
     auto total_end = std::chrono::high_resolution_clock::now();
     auto total_duration = std::chrono::duration_cast<std::chrono::milliseconds>(total_end - total_start);
-    std::cout << cli::GREEN << "Done in " << total_duration.count() / 1000.0 << " s" << cli::RESET << std::endl;
+    m_totalSimSeconds = total_duration.count() / 1000.0;
+    std::cout << cli::GREEN << "Done in " << m_totalSimSeconds << " s" << cli::RESET << std::endl;
 }
 
-void SimulationRunner::finalize(bool projectToGrid, bool computeProbes) {
-    if (projectToGrid)
-    {
-        std::cout << "\n--- Projecting final wake to Eulerian grid ---" << std::endl;
-        SimParams sim_copy = m_simParams;
-        sim_copy.cutoffParam = 1.0; 
-        projectWakeToEulerianGrid(*m_wake, m_turbineParams, sim_copy, m_geom, m_simParams.timesteps - 1, m_caseOutDir);
-    }
-
-    if (computeProbes)
-    {
-        std::string probe_csv_filepath = (std::filesystem::path(m_caseOutDir) / "probe_output.csv").string();
-        runProbeCalculation(m_h5Filepath, probe_csv_filepath, m_turbineParams, m_simParams, m_geom);
-    }
-    
+void SimulationRunner::finalize() {
     Logger::info("Case '" + m_pc.name + "' completed.");
+    if (m_simParams.logStepTiming) {
+        std::ostringstream oss;
+        oss << "Total simulation time: " << std::fixed << std::setprecision(6) << m_totalSimSeconds << " s";
+        Logger::log("TIME", oss.str());
+    }
     Logger::close();
 }
 
@@ -144,6 +261,7 @@ void SimulationRunner::resolve_paths() {
             data_root = "../data/" + turbine_model;
         }
     }
+    m_dataRoot = data_root;
 
     m_geometryPath = data_root + "/blade_geometry.csv";
     
@@ -210,6 +328,78 @@ std::string SimulationRunner::reset_case_output(const std::string &root, const s
     }
     std::filesystem::create_directories(p);
     return p.string();
+}
+
+void SimulationRunner::write_run_manifest() {
+    // Build manifest JSON (includes raw config)
+    std::filesystem::path root_path = std::filesystem::path(m_rootOutput);
+    std::filesystem::path project_root = (root_path.filename() == "results") ? root_path.parent_path() : root_path;
+
+    std::string git_commit = read_git_commit(project_root);
+    std::string host = get_hostname();
+    std::string timestamp = now_iso8601();
+    std::string config_abs;
+    if (!m_runMeta.config_path.empty()) {
+        std::error_code ec;
+        config_abs = std::filesystem::absolute(m_runMeta.config_path, ec).string();
+    }
+
+    std::filesystem::path manifest_path = std::filesystem::path(m_caseOutDir) / "run_manifest.json";
+    std::ofstream out(manifest_path);
+    if (!out) return;
+
+    out << "{\n";
+    out << "  \"timestamp\": \"" << json_escape(timestamp) << "\",\n";
+    out << "  \"hostname\": \"" << json_escape(host) << "\",\n";
+    out << "  \"executable\": \"" << json_escape(m_runMeta.exe_path) << "\",\n";
+    out << "  \"cli_args\": \"" << json_escape(m_runMeta.cli_args) << "\",\n";
+    out << "  \"config\": {\n";
+    out << "    \"path\": \"" << json_escape(m_runMeta.config_path) << "\",\n";
+    out << "    \"path_abs\": \"" << json_escape(config_abs) << "\",\n";
+    out << "    \"raw_json\": \"" << json_escape(m_runMeta.config_text) << "\"\n";
+    out << "  },\n";
+    out << "  \"git\": {\n";
+    out << "    \"commit\": \"" << json_escape(git_commit) << "\"\n";
+    out << "  },\n";
+    out << "  \"output\": {\n";
+    out << "    \"root\": \"" << json_escape(m_rootOutput) << "\",\n";
+    out << "    \"case_dir\": \"" << json_escape(m_caseOutDir) << "\",\n";
+    out << "    \"wake_h5\": \"" << json_escape(m_h5Filepath) << "\",\n";
+    out << "    \"log\": \"simulation.log\"\n";
+    out << "  },\n";
+    out << "  \"data\": {\n";
+    out << "    \"data_root\": \"" << json_escape(m_dataRoot) << "\",\n";
+    out << "    \"geometry_path\": \"" << json_escape(m_geometryPath) << "\"\n";
+    out << "  },\n";
+    out << "  \"case\": {\n";
+    out << "    \"name\": \"" << json_escape(m_pc.name) << "\",\n";
+    out << "    \"perturbation_type\": \"" << json_escape(to_string(m_pc.type)) << "\",\n";
+    out << "    \"perturbation_amplitude_deg\": " << m_pc.amplitude_deg << ",\n";
+    out << "    \"perturbation_freq_factor\": " << m_pc.freqFactor << "\n";
+    out << "  },\n";
+    out << "  \"turbine\": {\n";
+    out << "    \"model\": \"" << json_escape(m_turbineParams.model) << "\",\n";
+    out << "    \"wind_speed\": " << m_turbineParams.windSpeed << ",\n";
+    out << "    \"rho\": " << m_turbineParams.rho << ",\n";
+    out << "    \"r_hub\": " << m_turbineParams.rHub << ",\n";
+    out << "    \"r_tip\": " << m_turbineParams.rTip << ",\n";
+    out << "    \"hub_height\": " << m_turbineParams.hubHeight << ",\n";
+    out << "    \"n_blades\": " << m_turbineParams.nBlades << ",\n";
+    out << "    \"n_segments\": " << m_turbineParams.nSegments << ",\n";
+    out << "    \"segment_distribution\": \"" << json_escape(to_string(m_turbineParams.segmentDistribution)) << "\",\n";
+    out << "    \"tsr\": " << m_turbineParams.tsr << ",\n";
+    out << "    \"omega\": " << m_turbineParams.omega << "\n";
+    out << "  },\n";
+    out << "  \"simulation\": {\n";
+    out << "    \"dt\": " << m_simParams.dt << ",\n";
+    out << "    \"total_time\": " << m_simParams.totalTime << ",\n";
+    out << "    \"timesteps\": " << m_simParams.timesteps << ",\n";
+    out << "    \"output_frequency\": " << m_simParams.outputFrequency << ",\n";
+    out << "    \"cutoff_param\": " << m_simParams.cutoffParam << ",\n";
+    out << "    \"vortex_model\": \"" << json_escape(to_string(m_simParams.vortexModel)) << "\",\n";
+    out << "    \"core_type\": \"" << json_escape(to_string(m_simParams.coreType)) << "\"\n";
+    out << "  }\n";
+    out << "}\n";
 }
 
 } // namespace fvw

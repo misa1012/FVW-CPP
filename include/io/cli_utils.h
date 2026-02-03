@@ -59,10 +59,6 @@ namespace fvw {
                 // Info
                 if (elapsed_sec > 0) {
                     std::cout << std::fixed << std::setprecision(1) << "Time: " << elapsed_sec << "s";
-                    if (progress > 0) {
-                        double eta = (elapsed_sec / progress) - elapsed_sec;
-                        std::cout << " | ETA: " << eta << "s";
-                    }
                 }
                 
                 std::cout << std::flush;

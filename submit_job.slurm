@@ -1,9 +1,9 @@
 #!/bin/bash
-#SBATCH --job-name=fvw_simulation
+#SBATCH --job-name=fvw_nrel_15rev
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
-#SBATCH --time=04:00:00
+#SBATCH --time=08:00:00
 #SBATCH --output=slurm-%j.out
 #SBATCH --partition=short
 
@@ -41,7 +41,7 @@ export OMP_DISPLAY_ENV=true
 cd $SLURM_SUBMIT_DIR
 
 EXECUTABLE="./build/fvw_cpp"
-CONFIG="config_ntnu.json"
+CONFIG="tutorials/NREL/config.json"
 
 if [ ! -f "$EXECUTABLE" ]; then
     echo "Error: Executable $EXECUTABLE not found!"

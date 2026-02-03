@@ -23,7 +23,7 @@ set(CMAKE_CXX_FLAGS_RELWITHDEBINFO "${CMAKE_CXX_FLAGS_RELWITHDEBINFO} -O2 -g -DN
 
 # --- 2. Dependencies ---
 find_package(HDF5 REQUIRED COMPONENTS CXX)
-find_package(OpenMP)
+find_package(OpenMP REQUIRED)
 
 # --- 3. Core Library (fvw_core) ---
 # Groups: Core, Models, IO, Simulation, Validation
@@ -71,8 +71,7 @@ target_include_directories(fvw_core PUBLIC
 target_link_libraries(fvw_core PUBLIC ${HDF5_CXX_LIBRARIES})
 
 if(OpenMP_CXX_FOUND)
-    target_compile_options(fvw_core PUBLIC ${OpenMP_CXX_FLAGS})
-    target_link_libraries(fvw_core PUBLIC ${OpenMP_CXX_LIBRARIES})
+    target_link_libraries(fvw_core PUBLIC OpenMP::OpenMP_CXX)
 endif()
 
 if(ENABLE_PROFILING AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -94,26 +93,25 @@ option(BUILD_FVW_CPP "Build main simulation executable" ON)
 if(BUILD_FVW_CPP)
     add_executable(fvw_cpp main.cpp)
     target_link_libraries(fvw_cpp PRIVATE fvw_core)
+    if(OpenMP_CXX_FOUND)
+        target_link_libraries(fvw_cpp PRIVATE OpenMP::OpenMP_CXX)
+    endif()
 endif()
 
 # Post-processing Tools
 option(BUILD_TOOL_GRID "Build VTK grid generator" ON)
-option(BUILD_TOOL_PROBES "Build probe sampler" OFF)
+option(BUILD_TOOL_SAMPLING "Build sampling tool" ON)
 option(BUILD_TOOL_DOWNSTREAM "Build downstream velocity calculator" OFF)
 
 if(BUILD_TOOL_GRID)
   # Post-processing tool
-add_executable(postprocess_grid tools/postprocess_grid.cpp)
-target_link_libraries(postprocess_grid PRIVATE fvw_core)
-
-# Manual Probe Calculation
-add_executable(postprocess_probes_manual tools/postprocess_probes_manual.cpp)
-target_link_libraries(postprocess_probes_manual PRIVATE fvw_core)
+  add_executable(postprocess_grid tools/postprocess_grid.cpp)
+  target_link_libraries(postprocess_grid PRIVATE fvw_core)
 endif()
 
-if(BUILD_TOOL_PROBES)
-    add_executable(postprocess_probes tools/postprocess_probes.cpp)
-    target_link_libraries(postprocess_probes PRIVATE fvw_core)
+if(BUILD_TOOL_SAMPLING)
+    add_executable(postprocess_sampling tools/postprocess_sampling.cpp)
+    target_link_libraries(postprocess_sampling PRIVATE fvw_core)
 endif()
 
 if(BUILD_TOOL_DOWNSTREAM)

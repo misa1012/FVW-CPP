@@ -1,0 +1,23 @@
+{
+    "wake_h5": "results/NTNU_0_25/wake.h5",
+    "config": "docs/tutorials/NTNU/config.json",
+    "output_csv": "results/NTNU_0_25/sampling_output.csv",
+    "mode": "average",
+    "units": "m",
+    "average": {
+        "start_step": 3000,
+        "end_step": 3200,
+        "stride": 10
+    },
+    "points": [
+        { "name": "hub", "x": 0.894, "y": 0.0, "z": 0.8 }
+    ],
+    "lines": [
+        {
+            "name": "centerline",
+            "start": [0.447, 0.0, 0.8],
+            "end": [2.682, 0.0, 0.8],
+            "n": 30
+        }
+    ]
+}

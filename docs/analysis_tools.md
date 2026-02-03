@@ -1,98 +1,72 @@
 
-# Analysis Tools Guide
+# Analysis Tools Guide / 分析工具指南
 
-The `tools/python/` directory contains standalone scripts for analyzing simulation results. These scripts are designed to work directly with the HDF5 output (`wake.h5`) or CSV probe data.
+本页合并了原 `analysis_tools.md` 与 `analysis_tool_guide.md`，给出统一入口与推荐用法。
 
-## Available Tools
+## 入口 / Entry
+- Python 工具总览：`tools/python/README.md`
+- 后处理教程：`docs/postprocessing_tutorial.md`
 
-### 1. Instability Analysis (`analyze_instability.py`)
+## 1. 可视化工具 / Visualization
 
-**Purpose**: Quantify the onset of tip vortex instabilities (Crow instability, Pairing).
-
-*   **Input**: `results/<CaseName>/wake.h5`
-*   **Output**: `results/<CaseName>/post_processing/instability_analysis/`
-    *   `radial_instability.png`: Trajectory of tip vortices ($r/x$).
-    *   `pairing_distance.png`: Separation distance between adjacent vortices.
-
-**Usage**:
+### FVW 结果可视化
+脚本：`tools/python/wake_visualization/visualize_fvw_wake.py`  
+用途：生成尾迹速度亏损、涡量等可视化图  
+示例：
 ```bash
-python tools/python/analyze_instability.py
-# (Note: Edit the script directly to change the input filename if needed, default is results/NTNU_Baseline/wake.h5)
+conda run -n post python tools/python/wake_visualization/visualize_fvw_wake.py \
+  --results_dir results/CASE_NAME
 ```
 
-### 2. Validation with ALM-LES (`compare_fvw_alm.py`)
-
-**Purpose**: Compare mean velocity profiles with high-fidelity ALM-LES data.
-
-*   **Input**: 
-    *   FVW: `results/<CaseName>/probe_output.csv`
-    *   ALM: Directory path (Simulated or Experimental data)
-*   **Output**: `results/<CaseName>/post_processing/comparison_plots/`
-    *   Horizontal ($y/R$) and Vertical ($z/R$) velocity profiles at 1D, 2D... 8D.
-
-**Usage**:
+### ALM/LES 结果可视化
+脚本：`tools/python/wake_visualization/visualize_alm_wake.py`  
+用途：读取 ALM-LES 输出进行对比展示  
+示例：
 ```bash
-python tools/python/compare_fvw_alm.py
+conda run -n post python tools/python/wake_visualization/visualize_alm_wake.py --alm_dir /path/to/ALM_CASE
 ```
 
-### 3. Wake Metrics (`analyze_wake_metrics.py`)
+## 2. 定量分析 / Quantitative
 
-**Purpose**: Compute key wake characteristics like velocity deficit and wake width.
+### 气动性能 (Cp/Ct)
+目录：`tools/python/aerodynamics/`  
+主要脚本：
+- `single_case/analyze_case.py`：单 case 计算/绘图（Cp/Ct/Power/Thrust/AoA/Cl/Cd/Fn/Ft）
+- `compare_alm/compare.py`：Cp/Ct 与 ALM 参考对比
+- `compare_alm/compare_aoa_alm.py`：AoA 与 ALM 参考对比
 
-*   **Input**: `results/<CaseName>/probe_output.csv`
-*   **Output**: Console output (Metrics).
-
-**Usage**:
+示例：
 ```bash
-python tools/python/analyze_wake_metrics.py
+conda run -n post python tools/python/aerodynamics/single_case/analyze_case.py \
+  results/CASE/wake.h5 --plots power thrust cp ct
+
+conda run -n post python tools/python/aerodynamics/compare_alm/compare.py \
+  results/CASE/aerodynamic_performance/wake_perf.csv
 ```
 
----
+### 下游速度剖面
+目录：`tools/python/downstream_velocity/`  
+用途：提取剖面、对比 ALM、计算指标  
 
-# 分析工具指南 (Analysis Tools Guide)
-
-`tools/python/` 目录包含用于分析仿真结果的独立脚本。这些脚本设计为直接处理 HDF5 输出 (`wake.h5`) 或 CSV 探测数据。
-
-## 可用工具
-
-### 1. 不稳定性分析 (`analyze_instability.py`)
-
-**用途**: 量化叶尖涡不稳定性（Crow 不稳定性，配对/蛙跳）的起始点。
-
-*   **输入**: `results/<CaseName>/wake.h5`
-*   **输出**: `results/<CaseName>/post_processing/instability_analysis/`
-    *   `radial_instability.png`: 叶尖涡的径向轨迹 ($r/x$)。
-    *   `pairing_distance.png`: 相邻涡线之间的分离距离。
-
-**用法**:
+示例：
 ```bash
-python tools/python/analyze_instability.py
-# (注意: 如需更改输入文件名，请直接编辑脚本，默认为 results/NTNU_Baseline/wake.h5)
+conda run -n post python tools/python/downstream_velocity/extract_profiles.py results/CASE/wake.h5
+conda run -n post python tools/python/downstream_velocity/compare_alm.py results/CASE/probe_output.csv -r /path/to/ALM
 ```
 
-### 2. ALM-LES 验证 (`compare_fvw_alm.py`)
-
-**用途**: 将平均速度剖面与高保真 ALM-LES 数据进行对比。
-
-*   **输入**: 
-    *   FVW: `results/<CaseName>/probe_output.csv`
-    *   ALM: 目录路径 (仿真或实验数据)
-*   **输出**: `results/<CaseName>/post_processing/comparison_plots/`
-    *   1D, 2D... 8D 处的水平 ($y/R$) 和垂直 ($z/R$) 速度剖面。
-
-**用法**:
+### Cutoff Study
+目录：`tools/python/studies/cutoff/`
 ```bash
-python tools/python/compare_fvw_alm.py
+conda run -n post python tools/python/studies/cutoff/visualize.py \
+  --study-dir /path/to/cutoff_study \
+  --project-root /path/to/FVW-CPP \
+  --config-template tutorials/NTNU/config.json
 ```
 
-### 3. 尾迹指标 (`analyze_wake_metrics.py`)
-
-**用途**: 计算尾迹的关键特征，如速度亏损和尾迹宽度。
-
-*   **输入**: `results/<CaseName>/probe_output.csv`
-*   **输出**: 控制台输出 (各项指标)。
-
-**用法**:
+## 3. 不稳定性分析 / Instability
+脚本：`tools/python/downstream_velocity/analyze_instability.py`  
+用途：诊断尾迹不稳定性  
+示例：
 ```bash
-python tools/python/analyze_wake_metrics.py
+conda run -n post python tools/python/downstream_velocity/analyze_instability.py
 ```

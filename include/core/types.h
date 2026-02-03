@@ -20,6 +20,13 @@ namespace fvw
         ChordBasedCore, // 1: 跟local chord挂钩 建议选10%
     };
 
+    // 定义节点分布类型
+    enum class SegmentDistribution
+    {
+        Linear, // 线性均匀分布
+        Cosine  // 余弦分布 (两端加密)
+    };
+
     // 定义扰动类型
     enum class PerturbationType
     {
@@ -43,6 +50,8 @@ namespace fvw
         double totalTime;
         int timesteps;
         int outputFrequency;
+        int probeFrequency = 0;
+        bool computeProbes = false;
         double cutoffParam;
         VortexModelType vortexModel;
         VortexCoreType coreType;
@@ -57,25 +66,28 @@ namespace fvw
         // If > 0, dt and totalTime will be calculated automatically
         int stepsPerRevolution = 0;
         double numRevolutions = 0.0;
+
+        // Logging controls
+        bool logStepTiming = true;
+        bool logVerbose = false;
+        bool logPerf = false;
         
-        // Post-processing
-        int probeFrequency = 0; // Frequency of probe calculation
-        bool computeProbes = false; // Whether to run probes
     };
 
     // 风机物理参数
     struct TurbineParams
     {
         std::string model;
-        double windSpeed;
-        double rho;
-        double rHub;
-        double rTip;
-        double hubHeight = 90.0; // Added for post-processing, default NREL 5MW
-        int nBlades;
-        int nSegments;
-        double tsr;
-        double omega;
+        double windSpeed = -1.0;
+        double rho = 1.225;
+        double rHub = -1.0;
+        double rTip = -1.0;
+        double hubHeight = -1.0;
+        int nBlades = -1;
+        int nSegments = -1;
+        SegmentDistribution segmentDistribution = SegmentDistribution::Linear;
+        double tsr = -1.0;
+        double omega = 0.0;
     };
 
 } // namespace fvw

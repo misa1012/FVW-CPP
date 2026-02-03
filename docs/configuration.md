@@ -1,7 +1,7 @@
 
-# Configuration Reference (config.json)
+# Configuration Reference (strict mode)
 
-FVW-CPP uses `config.json` to control simulation parameters, turbine models, and perturbation cases. This file is the single source of truth for your simulation settings.
+FVW-CPP uses a specified config JSON (e.g., `tutorials/NREL/config.json`) to control simulation parameters, turbine models, and perturbation cases. In strict mode, all required fields must be explicitly provided.
 
 ## 1. Turbine Configuration
 
@@ -78,7 +78,7 @@ You can define multiple simulation cases in the `perturbations` array. The main 
 
 # 配置参考手册 (Configuration Reference)
 
-FVW-CPP 使用 `config.json` 来控制仿真参数、风机模型和扰动工况。该文件是所有仿真设置的核心。
+FVW-CPP 使用指定的配置文件（例如 `tutorials/NREL/config.json`）来控制仿真参数、风机模型和扰动工况。在严格模式下，所有关键字段必须显式给出。
 
 ## 1. 风机配置 (Turbine Configuration)
 

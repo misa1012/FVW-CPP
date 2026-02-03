@@ -143,7 +143,9 @@ namespace fvw
             }
 
             if (global_converged) {
-                Logger::log("SOLVER", "BEM Converged: " + std::to_string(iter + 1) + " iters");
+                if (simParams.logVerbose) {
+                    Logger::log("SOLVER", "BEM Converged: " + std::to_string(iter + 1) + " iters");
+                }
                 break;
             }
             if (iter == maxIterBEM - 1) {

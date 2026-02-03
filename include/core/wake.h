@@ -8,6 +8,7 @@
 #include "core/velocity.h"
 #include "models/airfoil.h"
 #include <vector>
+#include <limits>
 #include <stdexcept>
 #include <string> // 用于 to_string 等
 
@@ -183,7 +184,8 @@ namespace fvw
 
     // Biot-Savart function
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
-                                const Wake &wake, int timestep, const BladeGeometry &geom, const SimParams &simParams);
+                                const Wake &wake, int timestep, const BladeGeometry &geom, const SimParams &simParams,
+                                size_t startLineIdx = 0, size_t endLineIdx = std::numeric_limits<size_t>::max());
 
     void InitializeWakeStructure(Wake &wake, const BladeGeometry &geom, PerformanceData &perf,
                                  const TurbineParams &turbineParams, const PositionData &pos, const SimParams &simParams);
@@ -195,7 +197,7 @@ namespace fvw
 
     void kuttaJoukowskiIteration(Wake &wake, PerformanceData &perf, const BladeGeometry &geom, NodeAxes &axes,
                                  const PositionData &pos, VelBCS &velBCS,
-                                 std::vector<AirfoilData> &airfoils, const SimParams &simParams);
+                                 std::vector<AirfoilData> &airfoils, const TurbineParams &turbineParams, const SimParams &simParams);
 
     void ApplyGammaDecayAndRemoval(Wake &wake, int timestep, const TurbineParams &turbineParams, const SimParams &simParams);
 } // namespace fvw

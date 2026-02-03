@@ -21,7 +21,7 @@ The study utilizes the Inviscid Free Vortex Wake (FVW) method. Since the model i
 All analysis scripts are located in `tools/python/`.
 
 ### Step 1: Simulation Setup
-Edit `config_ntnu.json`:
+使用教程配置（示例）：`tutorials/NTNU/config.json`
 ```json
 "perturbations": [
     {
@@ -62,7 +62,7 @@ Compare mean velocity profiles with high-fidelity LES data.
     ```bash
     python tools/python/compare_fvw_alm.py
     ```
-*   **Requires**: `results/NTNU_Baseline/probe_output.csv` (Run simulation with `computeProbes: true`).
+*   **Requires**: `results/NTNU_Baseline/probe_output.csv` (Use postprocessing sampling tool to generate).
 *   **Outputs**: `results/NTNU_Baseline/post_processing/comparison_plots/`
 
 #### C. Wake Metrics
@@ -110,7 +110,7 @@ To save space and keep the workspace clean:
 所有分析脚本均位于 `tools/python/`。
 
 ### 步骤 1: 仿真设置
-编辑 `config_ntnu.json`:
+编辑教程配置（示例）：`tutorials/NTNU/config.json`
 ```json
 "perturbations": [
     {
@@ -151,7 +151,7 @@ sbatch submit_job.slurm
     ```bash
     python tools/python/compare_fvw_alm.py
     ```
-*   **依赖**: `results/NTNU_Baseline/probe_output.csv` (仿真时需开启 `computeProbes: true`)。
+*   **依赖**: `results/NTNU_Baseline/probe_output.csv` (使用后处理采样工具生成)。
 *   **输出** (`results/NTNU_Baseline/post_processing/comparison_plots/`):
 
 #### C. 尾迹指标
