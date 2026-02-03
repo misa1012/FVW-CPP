@@ -591,6 +591,42 @@ namespace fvw
                 perf.setCdAt(b, currentTimestep, i) = cd_value;
 
                 double chord = geom.chordShedding[i];
+
+                // Compute rotor-normal/tangential force per unit span (N/m)
+                double vxy = std::sqrt(vel_eff_blade_frame.x * vel_eff_blade_frame.x +
+                                       vel_eff_blade_frame.y * vel_eff_blade_frame.y);
+                if (vxy > 1e-12)
+                {
+                    double ex = vel_eff_blade_frame.x / vxy;
+                    double ey = vel_eff_blade_frame.y / vxy;
+                    double L = 0.5 * turbineParams.rho * vxy * vxy * chord * cl_value;
+                    double D = 0.5 * turbineParams.rho * vxy * vxy * chord * cd_value;
+
+                    // Force in blade frame (x: chord, y: normal)
+                    double fx_b = L * (-ey) + D * (-ex);
+                    double fy_b = L * (ex) + D * (-ey);
+
+                    Vec3 force_ics = bxn * fx_b + byn * fy_b;
+
+                    Vec3 axis_ics(-1.0, 0.0, 0.0); // rotor thrust axis (opposite wind +x)
+                    Vec3 radial_ics = pos.boundAt(b, currentTimestep, i) - pos.hubAt(currentTimestep);
+                    radial_ics.x = 0.0; // project to rotor plane (y-z)
+                    double radial_norm = radial_ics.norm();
+                    if (radial_norm > 1e-12) radial_ics = radial_ics * (1.0 / radial_norm);
+
+                    Vec3 tangential_ics = axis_ics.cross(radial_ics);
+                    double tan_norm = tangential_ics.norm();
+                    if (tan_norm > 1e-12) tangential_ics = tangential_ics * (1.0 / tan_norm);
+
+                    perf.setFnAt(b, currentTimestep, i) = force_ics.dot(axis_ics);
+                    perf.setFtAt(b, currentTimestep, i) = force_ics.dot(tangential_ics);
+                }
+                else
+                {
+                    perf.setFnAt(b, currentTimestep, i) = 0.0;
+                    perf.setFtAt(b, currentTimestep, i) = 0.0;
+                }
+
                 double gamma_required = 0.5 * Vinf_eff * chord * cl_value; 
 
                 BladeWake &currentBladeWake = wake.getBladeWake(currentTimestep, b);
@@ -600,7 +636,7 @@ namespace fvw
                 double gamma_current = boundLine.gamma;
                 double dg = gamma_required - gamma_current;
                 boundLine.gamma = gamma_current + relaxationFactor * dg;
-                
+
                 if (static_cast<size_t>(i) < updatedBoundGammas[b].size()) updatedBoundGammas[b][i] = boundLine.gamma;
                 
                 max_dg = std::max(max_dg, std::abs(dg));
@@ -658,6 +694,14 @@ namespace fvw
         if (max_dg >= convergenceThreshold)
         {
              Logger::log("KUTTA", "WARNING: Failed to converge. Max |dGamma| = " + std::to_string(max_dg));
+        }
+
+        for (int b = 0; b < wake.nBlades; ++b)
+        {
+            for (int i = 0; i < wake.nShed; ++i)
+            {
+                perf.setBoundGammaAt(b, currentTimestep, i) = updatedBoundGammas[b][i];
+            }
         }
         
     }

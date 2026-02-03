@@ -290,6 +290,23 @@ namespace fvw
                 }
                 gammaDataset.write(&gammaData[0], H5::PredType::NATIVE_DOUBLE);
 
+                // 2.5 写入 Fn / Ft (rotor-normal / rotor-tangential)
+                hsize_t forceDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 1};
+                H5::DataSpace forceSpace(2, forceDims);
+
+                H5::DataSet fnDataset = liftingBladeGroup.createDataSet("fn", H5::PredType::NATIVE_DOUBLE, forceSpace);
+                H5::DataSet ftDataset = liftingBladeGroup.createDataSet("ft", H5::PredType::NATIVE_DOUBLE, forceSpace);
+
+                std::vector<double> fnData(turbineParams.nSegments);
+                std::vector<double> ftData(turbineParams.nSegments);
+                for (int i = 0; i < turbineParams.nSegments; ++i)
+                {
+                    fnData[i] = perf.fnAt(b, timestep, i);
+                    ftData[i] = perf.ftAt(b, timestep, i);
+                }
+                fnDataset.write(&fnData[0], H5::PredType::NATIVE_DOUBLE);
+                ftDataset.write(&ftData[0], H5::PredType::NATIVE_DOUBLE);
+
                 // // 2.5 写入 pos.boundAt 数据
                 // hsize_t posDims[2] = {static_cast<hsize_t>(turbineParams.nSegments), 3}; // [nSegments, 3] for x, y, z
                 // H5::DataSpace posSpace(2, posDims);

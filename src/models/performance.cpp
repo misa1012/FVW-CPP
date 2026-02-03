@@ -12,7 +12,9 @@ namespace fvw
         cd.resize(nBlades * nTimesteps * nShed);
         inducedVelocity.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
         inducedVelocityICS.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
-        relativeVelocity.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0}); 
+        relativeVelocity.resize(nBlades * nTimesteps * nShed, Vec3{0.0, 0.0, 0.0});
+        fn.resize(nBlades * nTimesteps * nShed, 0.0);
+        ft.resize(nBlades * nTimesteps * nShed, 0.0);
         boundGamma.resize(nBlades_ * nTimesteps * nShed_, 0.0);
     }
 
@@ -73,6 +75,26 @@ namespace fvw
     Vec3 &PerformanceData::setRelativeVelocityAt(int b, int t, int i)
     {
         return relativeVelocity[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    const double &PerformanceData::fnAt(int b, int t, int i) const
+    {
+        return fn[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    const double &PerformanceData::ftAt(int b, int t, int i) const
+    {
+        return ft[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    double &PerformanceData::setFnAt(int b, int t, int i)
+    {
+        return fn[b * nTimesteps * nShed + t * nShed + i];
+    }
+
+    double &PerformanceData::setFtAt(int b, int t, int i)
+    {
+        return ft[b * nTimesteps * nShed + t * nShed + i];
     }
 
 } // namespace fvw

@@ -136,8 +136,8 @@ void SimulationRunner::initialize() {
     // 3. Resolve resource paths
     resolve_paths();
 
-    // Save config and manifest early for traceability
-    write_run_manifest();
+    // Print run summary to stdout (captured in .out by job script)
+    print_run_summary_stdout();
 
     // 4. Apply perturbation
     apply_perturbation();
@@ -330,76 +330,31 @@ std::string SimulationRunner::reset_case_output(const std::string &root, const s
     return p.string();
 }
 
-void SimulationRunner::write_run_manifest() {
-    // Build manifest JSON (includes raw config)
-    std::filesystem::path root_path = std::filesystem::path(m_rootOutput);
-    std::filesystem::path project_root = (root_path.filename() == "results") ? root_path.parent_path() : root_path;
-
-    std::string git_commit = read_git_commit(project_root);
-    std::string host = get_hostname();
-    std::string timestamp = now_iso8601();
-    std::string config_abs;
-    if (!m_runMeta.config_path.empty()) {
-        std::error_code ec;
-        config_abs = std::filesystem::absolute(m_runMeta.config_path, ec).string();
+void SimulationRunner::print_run_summary_stdout() const {
+    std::cout << "=== Run Summary ===" << std::endl;
+    if (!m_runMeta.exe_path.empty()) {
+        std::cout << "Executable   : " << m_runMeta.exe_path << std::endl;
     }
-
-    std::filesystem::path manifest_path = std::filesystem::path(m_caseOutDir) / "run_manifest.json";
-    std::ofstream out(manifest_path);
-    if (!out) return;
-
-    out << "{\n";
-    out << "  \"timestamp\": \"" << json_escape(timestamp) << "\",\n";
-    out << "  \"hostname\": \"" << json_escape(host) << "\",\n";
-    out << "  \"executable\": \"" << json_escape(m_runMeta.exe_path) << "\",\n";
-    out << "  \"cli_args\": \"" << json_escape(m_runMeta.cli_args) << "\",\n";
-    out << "  \"config\": {\n";
-    out << "    \"path\": \"" << json_escape(m_runMeta.config_path) << "\",\n";
-    out << "    \"path_abs\": \"" << json_escape(config_abs) << "\",\n";
-    out << "    \"raw_json\": \"" << json_escape(m_runMeta.config_text) << "\"\n";
-    out << "  },\n";
-    out << "  \"git\": {\n";
-    out << "    \"commit\": \"" << json_escape(git_commit) << "\"\n";
-    out << "  },\n";
-    out << "  \"output\": {\n";
-    out << "    \"root\": \"" << json_escape(m_rootOutput) << "\",\n";
-    out << "    \"case_dir\": \"" << json_escape(m_caseOutDir) << "\",\n";
-    out << "    \"wake_h5\": \"" << json_escape(m_h5Filepath) << "\",\n";
-    out << "    \"log\": \"simulation.log\"\n";
-    out << "  },\n";
-    out << "  \"data\": {\n";
-    out << "    \"data_root\": \"" << json_escape(m_dataRoot) << "\",\n";
-    out << "    \"geometry_path\": \"" << json_escape(m_geometryPath) << "\"\n";
-    out << "  },\n";
-    out << "  \"case\": {\n";
-    out << "    \"name\": \"" << json_escape(m_pc.name) << "\",\n";
-    out << "    \"perturbation_type\": \"" << json_escape(to_string(m_pc.type)) << "\",\n";
-    out << "    \"perturbation_amplitude_deg\": " << m_pc.amplitude_deg << ",\n";
-    out << "    \"perturbation_freq_factor\": " << m_pc.freqFactor << "\n";
-    out << "  },\n";
-    out << "  \"turbine\": {\n";
-    out << "    \"model\": \"" << json_escape(m_turbineParams.model) << "\",\n";
-    out << "    \"wind_speed\": " << m_turbineParams.windSpeed << ",\n";
-    out << "    \"rho\": " << m_turbineParams.rho << ",\n";
-    out << "    \"r_hub\": " << m_turbineParams.rHub << ",\n";
-    out << "    \"r_tip\": " << m_turbineParams.rTip << ",\n";
-    out << "    \"hub_height\": " << m_turbineParams.hubHeight << ",\n";
-    out << "    \"n_blades\": " << m_turbineParams.nBlades << ",\n";
-    out << "    \"n_segments\": " << m_turbineParams.nSegments << ",\n";
-    out << "    \"segment_distribution\": \"" << json_escape(to_string(m_turbineParams.segmentDistribution)) << "\",\n";
-    out << "    \"tsr\": " << m_turbineParams.tsr << ",\n";
-    out << "    \"omega\": " << m_turbineParams.omega << "\n";
-    out << "  },\n";
-    out << "  \"simulation\": {\n";
-    out << "    \"dt\": " << m_simParams.dt << ",\n";
-    out << "    \"total_time\": " << m_simParams.totalTime << ",\n";
-    out << "    \"timesteps\": " << m_simParams.timesteps << ",\n";
-    out << "    \"output_frequency\": " << m_simParams.outputFrequency << ",\n";
-    out << "    \"cutoff_param\": " << m_simParams.cutoffParam << ",\n";
-    out << "    \"vortex_model\": \"" << json_escape(to_string(m_simParams.vortexModel)) << "\",\n";
-    out << "    \"core_type\": \"" << json_escape(to_string(m_simParams.coreType)) << "\"\n";
-    out << "  }\n";
-    out << "}\n";
+    if (!m_runMeta.cli_args.empty()) {
+        std::cout << "CLI Args     : " << m_runMeta.cli_args << std::endl;
+    }
+    if (!m_runMeta.config_path.empty()) {
+        std::cout << "Config       : " << m_runMeta.config_path << std::endl;
+    }
+    std::cout << "Case         : " << m_pc.name << std::endl;
+    std::cout << "Output Dir   : " << m_caseOutDir << std::endl;
+    std::cout << "Data Root    : " << m_dataRoot << std::endl;
+    std::cout << "Geometry     : " << m_geometryPath << std::endl;
+    std::cout << "Model        : " << m_turbineParams.model << std::endl;
+    std::cout << "Wind Speed   : " << m_turbineParams.windSpeed << " m/s" << std::endl;
+    std::cout << "TSR          : " << m_turbineParams.tsr << std::endl;
+    std::cout << "Omega        : " << m_turbineParams.omega << " rad/s" << std::endl;
+    std::cout << "dt           : " << m_simParams.dt << " s" << std::endl;
+    std::cout << "Timesteps    : " << m_simParams.timesteps << std::endl;
+    std::cout << "Output Freq  : " << m_simParams.outputFrequency << std::endl;
+    std::cout << "Core Type    : " << to_string(m_simParams.coreType) << std::endl;
+    std::cout << "Vortex Model : " << to_string(m_simParams.vortexModel) << std::endl;
+    std::cout << "===================" << std::endl;
 }
 
 } // namespace fvw

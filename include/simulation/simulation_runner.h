@@ -85,7 +85,7 @@ private:
     void load_resources();
     void apply_perturbation();
     std::string reset_case_output(const std::string &root, const std::string &case_name, bool clean = true);
-    void write_run_manifest();
+    void print_run_summary_stdout() const;
 };
 
 } // namespace fvw
