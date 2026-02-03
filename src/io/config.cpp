@@ -47,6 +47,12 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (root.contains("simulation") && root["simulation"].contains("logVerbose")) {
         log_verbose = root["simulation"]["logVerbose"].as_bool();
     }
+    if (root.contains("caseName")) {
+        config.caseName = root["caseName"].as_string();
+    }
+    if (root.contains("outputRoot")) {
+        config.outputRoot = root["outputRoot"].as_string();
+    }
 
     // --- Turbine Params ---
     if (!root.contains("turbine")) throw std::runtime_error("Missing 'turbine' section in config");

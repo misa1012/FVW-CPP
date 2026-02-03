@@ -61,6 +61,8 @@ int main(int argc, char *argv[]) {
     std::filesystem::path exe_path = std::filesystem::canonical("/proc/self/exe");
     if (argc > 2) {
         output_path = argv[2];
+    } else if (!config.outputRoot.empty()) {
+        output_path = config.outputRoot;
     } else {
         std::filesystem::path project_root = exe_path.parent_path().parent_path(); // build/fvw_cpp -> FVW-CPP
         output_path = project_root / "results";
@@ -93,6 +95,9 @@ int main(int argc, char *argv[]) {
         default_pc.name = "default_baseline";
         default_pc.type = fvw::PerturbationType::None;
         
+        if (!config.caseName.empty()) {
+            default_pc.name = config.caseName;
+        }
         fvw::SimulationRunner runner(default_pc, config, rootOutput, runMeta);
         runner.initialize();
         runner.run();
@@ -102,11 +107,19 @@ int main(int argc, char *argv[]) {
         std::cout << fvw::cli::BOLD << "Starting batch of " << config.perturbations.size() << " cases." << fvw::cli::RESET << "\n";
         for (const auto &pc : config.perturbations)
         {
-            fvw::SimulationRunner runner(pc, config, rootOutput, runMeta);
+            fvw::PerturbationConfig pc_case = pc;
+            if (!config.caseName.empty()) {
+                if (config.perturbations.size() == 1) {
+                    pc_case.name = config.caseName;
+                } else {
+                    pc_case.name = config.caseName + "_" + pc.name;
+                }
+            }
+            fvw::SimulationRunner runner(pc_case, config, rootOutput, runMeta);
             runner.initialize();
             runner.run();
             runner.finalize();
-            completed_cases.push_back(pc.name);
+            completed_cases.push_back(pc_case.name);
         }
     }
     

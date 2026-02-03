@@ -18,6 +18,8 @@ namespace fvw {
         TurbineParams turbine;
         SimParams sim; // Base simulation parameters
         std::vector<PerturbationConfig> perturbations;
+        std::string caseName;   // Optional override for output case name
+        std::string outputRoot; // Optional override for results root
     };
 
     class ConfigLoader {

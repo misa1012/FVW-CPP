@@ -4,18 +4,12 @@
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
 #SBATCH --time=08:00:00
-#SBATCH --output=slurm-%j.out
+#SBATCH --output=/dev/null
 #SBATCH --partition=short
 
 # =============================================================================
 # FVW OpenMP Job Submission Script
 # =============================================================================
-
-echo "=================================================="
-echo "Job ID: $SLURM_JOB_ID"
-echo "Node:   $HOSTNAME"
-echo "Date:   $(date)"
-echo "=================================================="
 
 # --- 1. Environment Setup ---
 # Uncomment and modify specific module loads for your HPC system
@@ -41,7 +35,40 @@ export OMP_DISPLAY_ENV=true
 cd $SLURM_SUBMIT_DIR
 
 EXECUTABLE="./build/fvw_cpp"
-CONFIG="tutorials/NREL/config.json"
+CONFIG="${CONFIG:-tutorials/NTNU/config.json}"
+
+# Route stdout/stderr to the results dir for the case (same place as simulation.log)
+OUTDIR=$(python - <<'PY'
+import json, os
+cfg = os.environ.get("CONFIG", "tutorials/NTNU/config.json")
+with open(cfg) as f:
+    data = json.load(f)
+case = data.get("caseName")
+root = data.get("outputRoot")
+model = data.get("turbine", {}).get("model", "case")
+if root and case:
+    print(os.path.join(root, case))
+elif root:
+    print(os.path.join(root, model))
+elif case:
+    print(os.path.join("results", case))
+else:
+    print(os.path.join("results", model))
+PY
+)
+case "$OUTDIR" in
+    /*) ;; # absolute path, keep as-is
+    *) OUTDIR="$SLURM_SUBMIT_DIR/$OUTDIR" ;;
+esac
+mkdir -p "$OUTDIR"
+OUTFILE="$OUTDIR/slurm-$SLURM_JOB_ID.out"
+exec > "$OUTFILE" 2>&1
+
+echo "=================================================="
+echo "Job ID: $SLURM_JOB_ID"
+echo "Node:   $HOSTNAME"
+echo "Date:   $(date)"
+echo "=================================================="
 
 if [ ! -f "$EXECUTABLE" ]; then
     echo "Error: Executable $EXECUTABLE not found!"
