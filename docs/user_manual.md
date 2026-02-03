@@ -359,6 +359,20 @@ python tools/python/analyze_instability.py
 
 这样定义的 `fn/ft` 与 ALM‑LES 的 `normalForce` / `tangentialForce` 在物理意义上对齐，避免后处理因坐标定义差异导致的偏差。
 
+### 3.2 Van Garrel 涡核平滑项的单位一致性修正（方案 A）
+
+在 Biot–Savart 公式中使用了：
+```
+K = Gamma / (4π) * (r1 × r2) / (|r1 × r2|^2 + smoothing)
+```
+其中 `|r1 × r2|^2` 的量纲为 **length^4**。为保证单位一致，平滑项 `smoothing` 也必须是 **length^4**。
+
+修正如下（采用 **方案 A**：`epsilon = cutoffParam * L`）：
+- **Van Garrel**：`smoothing = (cutoffParam^4) * l^4`  
+- **Chord-based**：`smoothing = (cutoffParam^4) * c^4`
+
+这里 `l` 为涡线段长度，`c` 为局部弦长，`cutoffParam` 为无量纲参数（表示涡核半径与长度尺度的比例）。此修正用于保证涡核正则化与 Biot–Savart 分母单位一致。
+
 ### 3.2 配置文件
 使用指定的配置文件（例如 `tutorials/NTNU/config.json`）。常用修改项：
 *   `turbine.windSpeed`: 修改风速

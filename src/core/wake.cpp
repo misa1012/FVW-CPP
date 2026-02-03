@@ -98,6 +98,7 @@ namespace fvw
         fast_wake.reserve(est_elements);
 
         double cutoff_sq = simParams.cutoffParam * simParams.cutoffParam;
+        double cutoff_4 = cutoff_sq * cutoff_sq;
 
         for (int b = 0; b < wake.nBlades; ++b)
         {
@@ -134,7 +135,9 @@ namespace fvw
                 double smoothing = 0.0;
                 if (simParams.coreType == VortexCoreType::VanGarrel)
                 {
-                    smoothing = cutoff_sq * l_squared;
+                    // Van Garrel: epsilon = cutoffParam * L, smoothing = epsilon^4
+                    double l4 = l_squared * l_squared;
+                    smoothing = cutoff_4 * l4;
                 }
                 else if (simParams.coreType == VortexCoreType::ChordBasedCore)
                 {
@@ -151,7 +154,10 @@ namespace fvw
                         if (segment_idx >= 0 && static_cast<size_t>(segment_idx) < geom.chordTrailing.size())
                             chord_local = geom.chordTrailing[segment_idx];
                     }
-                    smoothing = cutoff_sq * chord_local * chord_local;
+                    // Chord-based: epsilon = cutoffParam * c, smoothing = epsilon^4
+                    double c2 = chord_local * chord_local;
+                    double c4 = c2 * c2;
+                    smoothing = cutoff_4 * c4;
                 }
 
                 fast_wake.push_back({x1, x2, line.gamma, smoothing});
