@@ -16,8 +16,9 @@ namespace fvw
     // 定义涡核
     enum class VortexCoreType
     {
-        VanGarrel,      // 0: 原始的、基于l0的平滑模型
-        ChordBasedCore, // 1: 跟local chord挂钩 建议选10%
+        VanGarrel,                // 0: 原始 Van Garrel (epsilon^2)
+        VanGarrelUnitConsistent,  // 1: Van Garrel unit-consistent (epsilon^4)
+        ChordBasedCore,           // 2: 跟local chord挂钩 建议选10%
     };
 
     // 定义节点分布类型

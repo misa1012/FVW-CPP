@@ -18,6 +18,7 @@ namespace {
     // Helper to map string to VortexCoreType
     VortexCoreType parseCoreType(const std::string& s) {
         if (s == "VanGarrel") return VortexCoreType::VanGarrel;
+        if (s == "VanGarrelUnitConsistent") return VortexCoreType::VanGarrelUnitConsistent;
         if (s == "ChordBasedCore") return VortexCoreType::ChordBasedCore;
         throw std::runtime_error("Unknown VortexCoreType: " + s);
     }

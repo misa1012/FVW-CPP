@@ -89,6 +89,7 @@ const char* to_string(VortexModelType t) {
 const char* to_string(VortexCoreType t) {
     switch (t) {
         case VortexCoreType::VanGarrel: return "VanGarrel";
+        case VortexCoreType::VanGarrelUnitConsistent: return "VanGarrelUnitConsistent";
         case VortexCoreType::ChordBasedCore: return "ChordBasedCore";
     }
     return "Unknown";

@@ -76,14 +76,6 @@ namespace fvw
 
         // --- 1. Flatten / Linearize the Wake (Pre-computation) ---
         double t_prep_start = omp_get_wtime();
-        struct FastFilament
-        {
-            Vec3 x1;
-            Vec3 x2;
-            double gamma;
-            double smoothing_term; 
-        };
-
         // Precise reserve size calculation to avoid reallocations
         size_t est_elements = 0;
         for (int b = 0; b < wake.nBlades; ++b)
@@ -94,11 +86,22 @@ namespace fvw
              if (limit > start) est_elements += (limit - start);
         }
 
-        std::vector<FastFilament> fast_wake;
-        fast_wake.reserve(est_elements);
+        std::vector<double> x1x, x1y, x1z;
+        std::vector<double> x2x, x2y, x2z;
+        std::vector<double> gamma_over_4pi;
+        std::vector<double> smoothing_term;
+        x1x.reserve(est_elements);
+        x1y.reserve(est_elements);
+        x1z.reserve(est_elements);
+        x2x.reserve(est_elements);
+        x2y.reserve(est_elements);
+        x2z.reserve(est_elements);
+        gamma_over_4pi.reserve(est_elements);
+        smoothing_term.reserve(est_elements);
 
         double cutoff_sq = simParams.cutoffParam * simParams.cutoffParam;
         double cutoff_4 = cutoff_sq * cutoff_sq;
+        double four_pi = 4.0 * M_PI;
 
         for (int b = 0; b < wake.nBlades; ++b)
         {
@@ -135,7 +138,12 @@ namespace fvw
                 double smoothing = 0.0;
                 if (simParams.coreType == VortexCoreType::VanGarrel)
                 {
-                    // Van Garrel: epsilon = cutoffParam * L, smoothing = epsilon^4
+                    // Van Garrel: epsilon = cutoffParam * L, smoothing = epsilon^2 (matches original formula form)
+                    smoothing = cutoff_sq * l_squared;
+                }
+                else if (simParams.coreType == VortexCoreType::VanGarrelUnitConsistent)
+                {
+                    // Van Garrel unit-consistent: epsilon = cutoffParam * L, smoothing = epsilon^4
                     double l4 = l_squared * l_squared;
                     smoothing = cutoff_4 * l4;
                 }
@@ -154,24 +162,28 @@ namespace fvw
                         if (segment_idx >= 0 && static_cast<size_t>(segment_idx) < geom.chordTrailing.size())
                             chord_local = geom.chordTrailing[segment_idx];
                     }
-                    // Chord-based: epsilon = cutoffParam * c, smoothing = epsilon^4
+                    // Chord-based: epsilon = cutoffParam * c, smoothing = epsilon^2 (matches original formula form)
                     double c2 = chord_local * chord_local;
-                    double c4 = c2 * c2;
-                    smoothing = cutoff_4 * c4;
+                    smoothing = cutoff_sq * c2;
                 }
 
-                fast_wake.push_back({x1, x2, line.gamma, smoothing});
+                x1x.push_back(x1.x);
+                x1y.push_back(x1.y);
+                x1z.push_back(x1.z);
+                x2x.push_back(x2.x);
+                x2y.push_back(x2.y);
+                x2z.push_back(x2.z);
+                gamma_over_4pi.push_back(line.gamma / four_pi);
+                smoothing_term.push_back(smoothing);
             }
         }
         double t_prep_end = omp_get_wtime();
         
         // --- 2. Parallel N-Body Interaction ---
-        double four_pi = 4.0 * M_PI;
-
         // HEURISTIC: Disable OpenMP for small workloads
         // Overhead of thread creation can dominate small loops.
         // Threshold ~100k interactions is safer.
-        size_t workload = numTargetPoints * fast_wake.size();
+        size_t workload = numTargetPoints * x1x.size();
         if (enableOpenMP && workload < 100000) {
              enableOpenMP = false;
         }
@@ -183,28 +195,30 @@ namespace fvw
             const Vec3 &p = targetPoints[p_idx];
             Vec3 total_vel_at_p(0.0, 0.0, 0.0);
 
-            for (const auto &fil : fast_wake)
+            const size_t n_fil = x1x.size();
+            for (size_t f = 0; f < n_fil; ++f)
             {
-                Vec3 r1 = p - fil.x1;
-                Vec3 r2 = p - fil.x2;
-                
-                double r1_norm = r1.norm();
-                double r2_norm = r2.norm();
-                double r1_r2 = r1_norm * r2_norm; 
-                double dot_r1_r2 = r1.dot(r2);
-                
-                // Cross product
-                Vec3 cross_r1_r2 = r1.cross(r2);
-                double cross_sq = cross_r1_r2.norm_squared();
+                const Vec3 r1(p.x - x1x[f], p.y - x1y[f], p.z - x1z[f]);
+                const Vec3 r2(p.x - x2x[f], p.y - x2y[f], p.z - x2z[f]);
 
+                const double r1_sq = r1.norm_squared();
+                const double r2_sq = r2.norm_squared();
+                if (r1_sq < 1e-20 || r2_sq < 1e-20) continue; // Avoid singular endpoints
+
+                const double r1_norm = std::sqrt(r1_sq);
+                const double r2_norm = std::sqrt(r2_sq);
+                const double r1_r2 = r1_norm * r2_norm;
+                const double dot_r1_r2 = r1.dot(r2);
+
+                const Vec3 cross_r1_r2 = r1.cross(r2);
+                const double cross_sq = cross_r1_r2.norm_squared();
                 if (cross_sq < 1e-12) continue; // Collinear
 
-                // K = Gamma/4pi * (r1 x r2) / ( |r1 x r2|^2 + smoothing ) * (1 + (r1 . r2) / |r1||r2|)
-                double numerator = (r1_norm + r2_norm) * (1.0 - dot_r1_r2 / r1_r2);
-                double denominator = cross_sq + fil.smoothing_term; 
-                
-                double K = (fil.gamma / four_pi) * (numerator / denominator);
-                
+                // K = Gamma/4pi * (|r1| + |r2|) / ( |r1||r2|(|r1||r2| + r1·r2) + smoothing )
+                const double numerator = (r1_norm + r2_norm);
+                const double denominator = r1_r2 * (r1_r2 + dot_r1_r2) + smoothing_term[f];
+                const double K = gamma_over_4pi[f] * (numerator / denominator);
+
                 total_vel_at_p.x += K * cross_r1_r2.x;
                 total_vel_at_p.y += K * cross_r1_r2.y;
                 total_vel_at_p.z += K * cross_r1_r2.z;

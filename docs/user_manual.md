@@ -359,19 +359,52 @@ python tools/python/analyze_instability.py
 
 这样定义的 `fn/ft` 与 ALM‑LES 的 `normalForce` / `tangentialForce` 在物理意义上对齐，避免后处理因坐标定义差异导致的偏差。
 
-### 3.2 Van Garrel 涡核平滑项的单位一致性修正（方案 A）
+### 3.2 Van Garrel 涡核平滑项的单位一致性修正
 
-在 Biot–Savart 公式中使用了：
-```
-K = Gamma / (4π) * (r1 × r2) / (|r1 × r2|^2 + smoothing)
-```
-其中 `|r1 × r2|^2` 的量纲为 **length^4**。为保证单位一致，平滑项 `smoothing` 也必须是 **length^4**。
+在 Biot–Savart 公式中，分母项具有 **length$^4$** 量纲。为保证单位一致，平滑项需要采用 $\epsilon^4$ 形式。
+因此提供 `VanGarrelUnitConsistent` 选项：
 
-修正如下（采用 **方案 A**：`epsilon = cutoffParam * L`）：
-- **Van Garrel**：`smoothing = (cutoffParam^4) * l^4`  
-- **Chord-based**：`smoothing = (cutoffParam^4) * c^4`
+- **VanGarrelUnitConsistent**：`smoothing = (cutoffParam^4) * l^4`
 
-这里 `l` 为涡线段长度，`c` 为局部弦长，`cutoffParam` 为无量纲参数（表示涡核半径与长度尺度的比例）。此修正用于保证涡核正则化与 Biot–Savart 分母单位一致。
+其中 `l` 为涡线段长度，`cutoffParam` 为无量纲参数（表示涡核半径与长度尺度的比例）。
+
+**当前实现的 Biot–Savart 公式（含平滑项）**  
+对直线涡段端点 $\mathbf{x}_1,\mathbf{x}_2$ 与目标点 $\mathbf{p}$：
+
+$$
+\mathbf{r}_1 = \mathbf{p}-\mathbf{x}_1,\quad
+\mathbf{r}_2 = \mathbf{p}-\mathbf{x}_2,\quad
+\mathbf{c} = \mathbf{r}_1 \times \mathbf{r}_2
+$$
+
+$$
+K \;=\; \frac{\Gamma}{4\pi}\;
+\frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)}
+{|\mathbf{r}_1||\mathbf{r}_2|\left(|\mathbf{r}_1||\mathbf{r}_2|+\mathbf{r}_1\cdot\mathbf{r}_2\right)+\epsilon^2}
+$$
+
+$$
+\mathbf{u}(\mathbf{p}) = K \, (\mathbf{r}_1 \times \mathbf{r}_2)
+$$
+
+其中平滑项 $\epsilon$ 定义为：
+
+- **VanGarrel**：$\epsilon = \text{cutoffParam}\cdot L$，$L=|\mathbf{x}_2-\mathbf{x}_1|$，分母使用 $\epsilon^2$  
+- **VanGarrelUnitConsistent**：$\epsilon = \text{cutoffParam}\cdot L$，分母使用 $\epsilon^4$  
+- **ChordBasedCore**：$\epsilon = \text{cutoffParam}\cdot c_{\text{local}}$，分母使用 $\epsilon^2$
+
+**单位一致性说明**  
+分母中的
+$|\mathbf{r}_1||\mathbf{r}_2|\left(|\mathbf{r}_1||\mathbf{r}_2|+\mathbf{r}_1\cdot\mathbf{r}_2\right)$
+具有 **length$^4$** 量纲，因此严格单位一致的修正形式使用 $\epsilon^4$（即 `VanGarrelUnitConsistent`）：
+
+$$
+K \;=\; \frac{\Gamma}{4\pi}\;
+\frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)}
+{|\mathbf{r}_1||\mathbf{r}_2|\left(|\mathbf{r}_1||\mathbf{r}_2|+\mathbf{r}_1\cdot\mathbf{r}_2\right)+\epsilon^4}
+$$
+
+其中 $\epsilon=\text{cutoffParam}\cdot L$，因此平滑项为 $\epsilon^4$。
 
 ### 3.2 配置文件
 使用指定的配置文件（例如 `tutorials/NTNU/config.json`）。常用修改项：
