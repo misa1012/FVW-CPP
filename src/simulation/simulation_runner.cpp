@@ -2,82 +2,12 @@
 #include "io/cli_utils.h"
 #include "io/logger.h"
 
-#include <array>
-#include <ctime>
 #include <fstream>
-#include <iomanip>
 #include <sstream>
-#include <unistd.h>
 
 namespace fvw {
 
 namespace {
-std::string json_escape(const std::string& s) {
-    std::string out;
-    out.reserve(s.size());
-    for (char c : s) {
-        switch (c) {
-            case '\"': out += "\\\""; break;
-            case '\\': out += "\\\\"; break;
-            case '\b': out += "\\b"; break;
-            case '\f': out += "\\f"; break;
-            case '\n': out += "\\n"; break;
-            case '\r': out += "\\r"; break;
-            case '\t': out += "\\t"; break;
-            default:
-                if (static_cast<unsigned char>(c) < 0x20) {
-                    std::ostringstream oss;
-                    oss << "\\u" << std::hex << std::uppercase << std::setw(4)
-                        << std::setfill('0') << static_cast<int>(static_cast<unsigned char>(c));
-                    out += oss.str();
-                } else {
-                    out += c;
-                }
-        }
-    }
-    return out;
-}
-
-std::string now_iso8601() {
-    auto now = std::chrono::system_clock::now();
-    std::time_t t = std::chrono::system_clock::to_time_t(now);
-    std::tm tm{};
-    localtime_r(&t, &tm);
-    std::ostringstream oss;
-    oss << std::put_time(&tm, "%Y-%m-%dT%H:%M:%S%z");
-    return oss.str();
-}
-
-std::string get_hostname() {
-    std::array<char, 256> buf{};
-    if (gethostname(buf.data(), buf.size()) == 0) {
-        return std::string(buf.data());
-    }
-    return "unknown";
-}
-
-std::string read_file_trim(const std::filesystem::path& path) {
-    std::ifstream in(path);
-    if (!in) return {};
-    std::ostringstream ss;
-    ss << in.rdbuf();
-    std::string s = ss.str();
-    while (!s.empty() && (s.back() == '\n' || s.back() == '\r')) s.pop_back();
-    return s;
-}
-
-std::string read_git_commit(const std::filesystem::path& project_root) {
-    std::filesystem::path head = project_root / ".git" / "HEAD";
-    if (!std::filesystem::exists(head)) return {};
-    std::string head_content = read_file_trim(head);
-    const std::string ref_prefix = "ref: ";
-    if (head_content.rfind(ref_prefix, 0) == 0) {
-        std::filesystem::path ref_path = project_root / ".git" / head_content.substr(ref_prefix.size());
-        return read_file_trim(ref_path);
-    }
-    return head_content;
-}
-
 const char* to_string(VortexModelType t) {
     switch (t) {
         case VortexModelType::Constant: return "Constant";
@@ -95,22 +25,6 @@ const char* to_string(VortexCoreType t) {
     return "Unknown";
 }
 
-const char* to_string(SegmentDistribution t) {
-    switch (t) {
-        case SegmentDistribution::Linear: return "Linear";
-        case SegmentDistribution::Cosine: return "Cosine";
-    }
-    return "Unknown";
-}
-
-const char* to_string(PerturbationType t) {
-    switch (t) {
-        case PerturbationType::None: return "None";
-        case PerturbationType::CollectivePitch: return "CollectivePitch";
-        case PerturbationType::AsymmetricStaticPitch: return "AsymmetricStaticPitch";
-    }
-    return "Unknown";
-}
 } // namespace
 
 SimulationRunner::SimulationRunner(const PerturbationConfig& pc,
