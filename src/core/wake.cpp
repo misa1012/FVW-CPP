@@ -505,9 +505,9 @@ namespace fvw
                                  const PositionData &pos, VelBCS &velBCS,
                                  std::vector<AirfoilData> &airfoils, const TurbineParams &turbineParams, const SimParams &simParams)
     {
-        const int maxIterations = 200;
-        const double convergenceThreshold = 1e-4;
-        const double relaxationFactor = 0.3;
+        const int maxIterations = simParams.kuttaMaxIterations;
+        const double convergenceThreshold = simParams.kuttaTolerance;
+        const double relaxationFactor = simParams.kuttaRelaxation;
         bool if_verbose = false;
 
         int currentTimestep = wake.bladeWakes.size() - 1;

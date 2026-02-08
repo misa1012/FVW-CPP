@@ -62,6 +62,11 @@ namespace fvw
         double bemTolerance = 1e-4;
         int bemMaxIterations = 200;
         double bemRelaxation = 0.2;
+
+        // Kutta-Joukowski iteration settings
+        double kuttaTolerance = 1e-4;
+        int kuttaMaxIterations = 200;
+        double kuttaRelaxation = 0.3;
         
         // Revolution-based parameters (optional, for user convenience)
         // If > 0, dt and totalTime will be calculated automatically

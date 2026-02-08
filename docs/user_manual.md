@@ -406,6 +406,85 @@ $$
 
 其中 $\epsilon=\text{cutoffParam}\cdot L$，因此平滑项为 $\epsilon^4$。
 
+### 3.3 近期修改说明（2026-02-07）
+
+本次修改聚焦于 **Van Garrel 诱导速度公式与涡核正则化的可控性**，以及 **诱导速度计算性能**。主要变化如下：
+
+代码节点：`f76d56ef5d0fcfd9c8ed26f654a7f572d7a1f51a`
+
+1. **公式形式对齐 Van Garrel 原始写法**  
+   修改前（旧实现，cross² 形式，分母为 $|r_1\times r_2|^2$）：  
+
+   $$
+   \mathbf{u}(\mathbf{p}) = \frac{\Gamma}{4\pi}\;
+   \frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)\left(1-\frac{\mathbf{r}_1\cdot\mathbf{r}_2}{|\mathbf{r}_1||\mathbf{r}_2|}\right)}
+   {|\mathbf{r}_1\times\mathbf{r}_2|^2+\epsilon^p}\;(\mathbf{r}_1\times\mathbf{r}_2)
+   $$
+
+   修改后（当前实现，Van Garrel 原始写法，分母为 $|r_1||r_2|(|r_1||r_2|+r_1\cdot r_2)$）：  
+
+   $$
+   \mathbf{u}(\mathbf{p}) = \frac{\Gamma}{4\pi}\;
+   \frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)\,(\mathbf{r}_1\times\mathbf{r}_2)}
+   {|\mathbf{r}_1||\mathbf{r}_2|(|\mathbf{r}_1||\mathbf{r}_2|+\mathbf{r}_1\cdot\mathbf{r}_2)+\epsilon^2}
+   $$
+
+   其中 $p=2$（VanGarrel）或 $p=4$（VanGarrelUnitConsistent）。  
+   这项改变会直接影响局部诱导速度与 Kutta 迭代收敛行为。
+
+   **等价性推导（仅在无平滑项时成立）**  
+   记 $a=|\mathbf{r}_1|,\; b=|\mathbf{r}_2|,\; c=\mathbf{r}_1\cdot\mathbf{r}_2$。  
+   由于
+   $|\mathbf{r}_1\times\mathbf{r}_2| = ab\sin\theta$，
+   $\mathbf{r}_1\cdot\mathbf{r}_2 = ab\cos\theta$，因此
+   $$
+   |\mathbf{r}_1\times\mathbf{r}_2|^2
+   = a^2 b^2 \sin^2\theta
+   = a^2 b^2 (1-\cos^2\theta)
+   = a^2 b^2 - (ab\cos\theta)^2
+   = a^2 b^2 - c^2
+   $$
+
+   旧写法中的因子为：
+   $$
+   \frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)\left(1-\frac{c}{ab}\right)}{|\mathbf{r}_1\times\mathbf{r}_2|^2}
+   = \frac{(a+b)\left(1-\frac{c}{ab}\right)}{a^2b^2-c^2}
+   $$
+
+   分子展开：
+   $$
+   (a+b)\left(1-\frac{c}{ab}\right)
+   = \frac{(a+b)(ab-c)}{ab}
+   $$
+
+   因此：
+   $$
+   \frac{(a+b)(ab-c)}{ab(a^2b^2-c^2)}
+   = \frac{(a+b)(ab-c)}{ab(ab-c)(ab+c)}
+   = \frac{a+b}{ab(ab+c)}
+   $$
+
+   即：
+   $$
+   \frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)\left(1-\frac{\mathbf{r}_1\cdot\mathbf{r}_2}{|\mathbf{r}_1||\mathbf{r}_2|}\right)}{|\mathbf{r}_1\times\mathbf{r}_2|^2}
+   =
+   \frac{(|\mathbf{r}_1|+|\mathbf{r}_2|)}{|\mathbf{r}_1||\mathbf{r}_2|\left(|\mathbf{r}_1||\mathbf{r}_2|+\mathbf{r}_1\cdot\mathbf{r}_2\right)}
+   $$
+
+   这说明**在无平滑项时**两种写法等价；一旦加入 $\epsilon^p$，等价性不再成立。
+
+2. **新增三种涡核选项（coreType）**  
+   - `VanGarrel`：$\epsilon^2$（原始形式，数值更平滑）  
+   - `VanGarrelUnitConsistent`：$\epsilon^4$（单位一致，但更“刚”）  
+   - `ChordBasedCore`：$\epsilon^2$，以局部弦长为尺度  
+   该变化意味着你可以系统对比 **正则化强度** 对 Kutta 收敛与载荷的影响。
+
+3. **诱导速度计算性能优化**  
+   - 预计算 `gamma/(4π)`，减少内层循环开销  
+   - 采用 SoA（分量数组）代替 AoS（结构数组）以提高缓存效率  
+   - 增加端点与共线过滤，降低异常点对数值稳定性的影响  
+   这不会改变物理结果，但会改善大规模计算的吞吐。
+
 ### 3.2 配置文件
 使用指定的配置文件（例如 `tutorials/NTNU/config.json`）。常用修改项：
 *   `turbine.windSpeed`: 修改风速

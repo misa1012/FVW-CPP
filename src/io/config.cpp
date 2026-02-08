@@ -191,6 +191,11 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     config.sim.bemMaxIterations = simJson["bemMaxIterations"].as_int();
     config.sim.bemRelaxation = simJson["bemRelaxation"].as_double();
 
+    // Kutta-Joukowski Iteration Settings (Optional)
+    if (simJson.contains("kuttaTolerance")) config.sim.kuttaTolerance = simJson["kuttaTolerance"].as_double();
+    if (simJson.contains("kuttaMaxIterations")) config.sim.kuttaMaxIterations = simJson["kuttaMaxIterations"].as_int();
+    if (simJson.contains("kuttaRelaxation")) config.sim.kuttaRelaxation = simJson["kuttaRelaxation"].as_double();
+
     // Optional logging settings
     if (simJson.contains("logStepTiming")) config.sim.logStepTiming = simJson["logStepTiming"].as_bool();
     if (simJson.contains("logVerbose")) config.sim.logVerbose = simJson["logVerbose"].as_bool();
