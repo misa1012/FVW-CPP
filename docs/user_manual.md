@@ -89,6 +89,20 @@ According to the Helmholtz vortex theorems, vortex filaments move with the fluid
 
 $$ \vec{x}(t + \Delta t) = \vec{x}(t) + [\vec{V}_{\infty} + \vec{V}_{ind}(\vec{x})] \cdot \Delta t $$
 
+Time marching options for wake convection:
+- `Euler` (1st order explicit):
+$$
+\vec{x}^{\,n+1} = \vec{x}^{\,n} + \Delta t\,\vec{u}^{\,n}
+$$
+- `PredictorCorrector` (2nd order explicit Heun):
+$$
+\vec{x}^{*} = \vec{x}^{\,n} + \Delta t\,\vec{u}^{\,n}
+$$
+$$
+\vec{x}^{\,n+1} = \vec{x}^{\,n} + \frac{\Delta t}{2}\left(\vec{u}^{\,n} + \vec{u}^{*}\right)
+$$
+where $\vec{u}^{*}$ is re-evaluated on the predicted wake geometry.
+
 ---
 
 ## Part 2: Implementation Map
@@ -102,7 +116,7 @@ This section helps you find the specific implementations of the above physical p
 | **1. Blade Motion** | `computePositions` | `src/core/position.cpp` | Updates blade node coordinates $\vec{r}(t)$ based on rotor speed $\Omega$ |
 | **2. Motion Velocity** | `computeVelICS` | `src/core/velocity.cpp` | Calculates $\vec{V}_{motion} \approx \frac{d\vec{r}}{dt}$ (Finite Difference) |
 | **3. Relative Velocity** | `computeVelBCS` | `src/core/velocity.cpp` | Synthesizes $\vec{V}_{rel}$ and projects it to the Blade Coordinate System |
-| **4. Wake Convection** | `AdvanceWakeStructure` | `src/core/wake.cpp` | Euler integration to update wake point positions |
+| **4. Wake Convection** | `AdvanceWakeStructure` | `src/core/wake.cpp` | `Euler` or explicit `PredictorCorrector` (Heun) for wake-node update |
 | **5. Induced Velocity** | `computeInducedVelocity`| `src/core/wake.cpp` | **Biot-Savart Law**: Calculates $\vec{V}_{ind}$ |
 | **6. Aerodynamic Load** | `kuttaJoukowskiIteration`| `src/core/wake.cpp` | **Kutta-Joukowski Iteration**: Solves for $\Gamma$ |
 
@@ -153,6 +167,7 @@ python tools/python/analyze_instability.py
 Use a specified config file (e.g., `tutorials/NTNU/config.json`). Common modifications:
 *   `turbine.windSpeed`: Modify wind speed
 *   `simulation.dt`: Modify time step
+*   `simulation.timeScheme`: Choose wake convection scheme (`Euler`/`PredictorCorrector`)
 *   `simulation.totalTime`: Modify total simulation duration
 
 For more detailed configuration instructions, please refer to the [Configuration Guide](configuration.md).
@@ -250,6 +265,20 @@ $$
 
 $$ \vec{x}(t + \Delta t) = \vec{x}(t) + [\vec{V}_{\infty} + \vec{V}_{ind}(\vec{x})] \cdot \Delta t $$
 
+尾迹对流时间格式支持：
+- `Euler`（一阶显式）：
+$$
+\vec{x}^{\,n+1} = \vec{x}^{\,n} + \Delta t\,\vec{u}^{\,n}
+$$
+- `PredictorCorrector`（二阶显式 Heun）：
+$$
+\vec{x}^{*} = \vec{x}^{\,n} + \Delta t\,\vec{u}^{\,n}
+$$
+$$
+\vec{x}^{\,n+1} = \vec{x}^{\,n} + \frac{\Delta t}{2}\left(\vec{u}^{\,n} + \vec{u}^{*}\right)
+$$
+其中 $\vec{u}^{*}$ 在预测尾迹几何上重新计算。
+
 ---
 
 ## Part 2: 代码实现对照 (Implementation Map)
@@ -263,7 +292,7 @@ $$ \vec{x}(t + \Delta t) = \vec{x}(t) + [\vec{V}_{\infty} + \vec{V}_{ind}(\vec{x
 | **1. 叶片运动** | `computePositions` | `src/core/position.cpp` | 根据转速 $\Omega$ 更新叶片节点坐标 $\vec{r}(t)$ |
 | **2. 运动速度** | `computeVelICS` | `src/core/velocity.cpp` | 计算 $\vec{V}_{motion} \approx \frac{d\vec{r}}{dt}$ (差分法) |
 | **3. 相对速度** | `computeVelBCS` | `src/core/velocity.cpp` | 合成 $\vec{V}_{rel}$ 并投影到叶片坐标系 |
-| **4. 尾迹对流** | `AdvanceWakeStructure` | `src/core/wake.cpp` | 欧拉积分更新尾迹点位置 |
+| **4. 尾迹对流** | `AdvanceWakeStructure` | `src/core/wake.cpp` | 可选 `Euler` 或显式 `PredictorCorrector`（Heun）更新尾迹节点 |
 | **5. 诱导速度** | `computeInducedVelocity`| `src/core/wake.cpp` | **Biot-Savart 定律**：计算 $\vec{V}_{ind}$ |
 | **6. 气动载荷** | `kuttaJoukowskiIteration`| `src/core/wake.cpp` | **Kutta-Joukowski 迭代**：求解 $\Gamma$ |
 
@@ -489,6 +518,7 @@ $$
 使用指定的配置文件（例如 `tutorials/NTNU/config.json`）。常用修改项：
 *   `turbine.windSpeed`: 修改风速
 *   `simulation.dt`: 修改时间步长
+*   `simulation.timeScheme`: 选择尾迹对流时间格式（`Euler`/`PredictorCorrector`）
 *   `simulation.totalTime`: 修改仿真总时长
 
 更详细的配置说明请参考 [Configuration Guide](configuration.md)。

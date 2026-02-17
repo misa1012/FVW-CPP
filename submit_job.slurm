@@ -1,5 +1,5 @@
 #!/bin/bash
-#SBATCH --job-name=fvw_nrel_15rev
+#SBATCH --job-name=fvw_ntnu
 #SBATCH --nodes=1
 #SBATCH --ntasks=1
 #SBATCH --cpus-per-task=48
@@ -31,10 +31,28 @@ export OMP_PLACES=cores
 export OMP_DISPLAY_ENV=true 
 
 # --- 3. Execution ---
-# Navigate to the directory where sbatch was called
-cd $SLURM_SUBMIT_DIR
+# Resolve executable robustly. On this cluster, Slurm may execute a spooled
+# copy of the script, so BASH_SOURCE can point to /var/spool/... and break
+# relative project-root logic.
+SCRIPT_PATH="$(readlink -f "${BASH_SOURCE[0]}")"
+SCRIPT_DIR="$(cd "$(dirname "$SCRIPT_PATH")" && pwd)"
 
-EXECUTABLE="./build/fvw_cpp"
+EXEC_CANDIDATES=(
+    "${FVW_EXECUTABLE:-}"
+    "/data/marine-cfd/shug8104/FVW-CPP/build/fvw_cpp"
+    "/home/shug8104/data/FVW-CPP/build/fvw_cpp"
+    "$SLURM_SUBMIT_DIR/build/fvw_cpp"
+    "$SCRIPT_DIR/build/fvw_cpp"
+)
+
+EXECUTABLE=""
+for cand in "${EXEC_CANDIDATES[@]}"; do
+    [[ -n "$cand" ]] || continue
+    if [[ -x "$cand" ]]; then
+        EXECUTABLE="$cand"
+        break
+    fi
+done
 CONFIG="${CONFIG:-tutorials/NTNU/config.json}"
 
 # Route stdout/stderr to the results dir for the case (same place as simulation.log)
@@ -70,8 +88,11 @@ echo "Node:   $HOSTNAME"
 echo "Date:   $(date)"
 echo "=================================================="
 
-if [ ! -f "$EXECUTABLE" ]; then
-    echo "Error: Executable $EXECUTABLE not found!"
+if [ -z "$EXECUTABLE" ] || [ ! -x "$EXECUTABLE" ]; then
+    echo "Error: fvw_cpp executable not found in candidates:"
+    for cand in "${EXEC_CANDIDATES[@]}"; do
+        [[ -n "$cand" ]] && echo "  $cand"
+    done
     echo "Please compile before submitting:"
     echo "  mkdir -p build && cd build"
     echo "  cmake .. -DCMAKE_BUILD_TYPE=Release"

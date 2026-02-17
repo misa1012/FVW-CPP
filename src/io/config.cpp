@@ -37,6 +37,19 @@ namespace {
         if (s == "Cosine") return SegmentDistribution::Cosine;
         throw std::runtime_error("Unknown SegmentDistribution: " + s);
     }
+
+    // Helper to map string to TimeMarchingScheme
+    TimeMarchingScheme parseTimeScheme(const std::string& s) {
+        if (s == "Euler") return TimeMarchingScheme::Euler;
+        if (s == "PredictorCorrector") return TimeMarchingScheme::PredictorCorrector;
+        throw std::runtime_error("Unknown TimeMarchingScheme: " + s);
+    }
+
+    TipLossModel parseTipLossModel(const std::string& s) {
+        if (s == "Off") return TipLossModel::Off;
+        if (s == "Wimshurst") return TipLossModel::Wimshurst;
+        throw std::runtime_error("Unknown TipLossModel: " + s);
+    }
 }
 
 GlobalConfig ConfigLoader::load(const std::string& filepath) {
@@ -200,6 +213,17 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (simJson.contains("logStepTiming")) config.sim.logStepTiming = simJson["logStepTiming"].as_bool();
     if (simJson.contains("logVerbose")) config.sim.logVerbose = simJson["logVerbose"].as_bool();
     if (simJson.contains("logPerf")) config.sim.logPerf = simJson["logPerf"].as_bool();
+    if (simJson.contains("timeScheme")) config.sim.timeScheme = parseTimeScheme(simJson["timeScheme"].as_string());
+    if (simJson.contains("tipLossModel")) {
+        config.sim.tipLossModel = parseTipLossModel(simJson["tipLossModel"].as_string());
+    }
+    if (simJson.contains("tipSpeedRatioShen")) config.sim.tipSpeedRatioShen = simJson["tipSpeedRatioShen"].as_double();
+    if (simJson.contains("c1Faxi")) config.sim.c1Faxi = simJson["c1Faxi"].as_double();
+    if (simJson.contains("c2Faxi")) config.sim.c2Faxi = simJson["c2Faxi"].as_double();
+    if (simJson.contains("c3Faxi")) config.sim.c3Faxi = simJson["c3Faxi"].as_double();
+    if (simJson.contains("c1Ftan")) config.sim.c1Ftan = simJson["c1Ftan"].as_double();
+    if (simJson.contains("c2Ftan")) config.sim.c2Ftan = simJson["c2Ftan"].as_double();
+    if (simJson.contains("c3Ftan")) config.sim.c3Ftan = simJson["c3Ftan"].as_double();
 
     // Calculate derived timesteps (including t=0)
     config.sim.timesteps = static_cast<int>(config.sim.totalTime / config.sim.dt) + 1;

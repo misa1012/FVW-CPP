@@ -12,6 +12,101 @@
 
 namespace fvw
 {
+    namespace
+    {
+        struct TipLossFactors
+        {
+            double lift_drag = 1.0; // scales lift/drag magnitude before projection
+            double axial = 1.0;     // scales Fn
+            double tangential = 1.0;// scales Ft
+        };
+
+        double wimshurst_tip_factor(
+            double r,
+            double phi,
+            const TurbineParams &turbineParams,
+            double c1,
+            double c2,
+            double c3,
+            double tip_speed_ratio_shen)
+        {
+            constexpr double pi = 3.14159265358979323846;
+            const double sin_phi = std::max(std::abs(std::sin(phi)), 1e-6);
+            const double r_safe = std::max(r, 1e-6);
+            const double b = static_cast<double>(turbineParams.nBlades);
+
+            const double g = std::exp(-c1 * ((b * tip_speed_ratio_shen) - c2)) + c3;
+            const double ftip = (turbineParams.rTip - r_safe) / (r_safe * sin_phi + 1e-12);
+            const double arg1 = -g * (b / 2.0) * ftip;
+            const double arg2 = std::exp(std::max(std::min(30.0, arg1), -30.0));
+            const double ftip_corr = (2.0 / pi) * std::acos(std::clamp(arg2, 0.0, 1.0));
+
+            if (!std::isfinite(ftip_corr) || ftip_corr <= 0.0) return 1.0;
+            return std::clamp(ftip_corr, 0.0, 1.0);
+        }
+
+        bool compute_phi(
+            int b,
+            int currentTimestep,
+            int i,
+            const PositionData &pos,
+            const Vec3 &bxn,
+            const Vec3 &byn,
+            const Vec3 &bzn,
+            const Vec3 &vel_eff_blade_frame,
+            double &phi_out)
+        {
+            const Vec3 vel_eff_ics = bxn * vel_eff_blade_frame.x +
+                                     byn * vel_eff_blade_frame.y +
+                                     bzn * vel_eff_blade_frame.z;
+            const Vec3 axis_ics(-1.0, 0.0, 0.0); // rotor thrust axis (opposite wind +x)
+            Vec3 radial_ics = pos.boundAt(b, currentTimestep, i) - pos.hubAt(currentTimestep);
+            radial_ics.x = 0.0; // project to rotor plane (y-z)
+            const double radial_norm = radial_ics.norm();
+            if (radial_norm <= 1e-12) return false;
+            radial_ics = radial_ics * (1.0 / radial_norm);
+
+            Vec3 tangential_ics = axis_ics.cross(radial_ics);
+            const double tan_norm = tangential_ics.norm();
+            if (tan_norm <= 1e-12) return false;
+            tangential_ics = tangential_ics * (1.0 / tan_norm);
+
+            const double v_axial = std::abs(vel_eff_ics.dot(axis_ics));
+            const double v_tan = std::abs(vel_eff_ics.dot(tangential_ics));
+            phi_out = std::atan2(v_axial, std::max(v_tan, 1e-12));
+            return std::isfinite(phi_out);
+        }
+
+        TipLossFactors compute_tip_loss_factors(
+            double r,
+            double phi,
+            const TurbineParams &turbineParams,
+            const SimParams &simParams)
+        {
+            TipLossFactors factors;
+            switch (simParams.tipLossModel)
+            {
+                case TipLossModel::Off:
+                    break;
+                case TipLossModel::Wimshurst:
+                {
+                    factors.axial = wimshurst_tip_factor(
+                        r, phi, turbineParams,
+                        simParams.c1Faxi, simParams.c2Faxi, simParams.c3Faxi,
+                        simParams.tipSpeedRatioShen);
+                    factors.tangential = wimshurst_tip_factor(
+                        r, phi, turbineParams,
+                        simParams.c1Ftan, simParams.c2Ftan, simParams.c3Ftan,
+                        simParams.tipSpeedRatioShen);
+                    // Match ALM behavior: Wimshurst does not scale lift/drag itself.
+                    factors.lift_drag = 1.0;
+                    break;
+                }
+            }
+            return factors;
+        }
+    }
+
     // Optimized Biot-Savart function using Fast Filament approach
     void computeInducedVelocity(std::vector<Vec3> &inducedVelocities, const std::vector<Vec3> &targetPoints,
                                 const Wake &wake, int timestep, const BladeGeometry &geom, const SimParams &simParams,
@@ -378,11 +473,15 @@ namespace fvw
 
     void AdvanceWakeStructure(Wake &wake,
                               const TurbineParams &turbineParams, const PositionData &pos,
-                              double dt, int currentTimestep)
+                              const BladeGeometry &geom, const SimParams &simParams, int currentTimestep)
     {
+        const double dt = simParams.dt;
         wake.ensureTimeStepExists(currentTimestep);
 
         Vec3 initialFreeStreamVel = Vec3(turbineParams.windSpeed, 0.0, 0.0);
+        std::vector<std::vector<Vec3>> prevPositionsPerBlade(wake.nBlades);
+        std::vector<std::vector<Vec3>> prevVelocitiesPerBlade(wake.nBlades);
+        std::vector<int> convectedCountPerBlade(wake.nBlades, 0);
 
         for (int b = 0; b < wake.nBlades; ++b)
         {
@@ -410,9 +509,16 @@ namespace fvw
             currentBladeWake.trailingLineIndices.assign(wake.nTrail, -1);
             currentBladeWake.shedLineIndices.assign(wake.nShed, -1);
 
+            const int nConvected = static_cast<int>(prevBladeWake.nodes.size());
+            convectedCountPerBlade[b] = nConvected;
+            prevPositionsPerBlade[b].reserve(nConvected);
+            prevVelocitiesPerBlade[b].reserve(nConvected);
+
             for (size_t i = 0; i < prevBladeWake.nodes.size(); ++i)
             {
                 const VortexNode &node = prevBladeWake.nodes[i];
+                prevPositionsPerBlade[b].push_back(node.position);
+                prevVelocitiesPerBlade[b].push_back(node.velocity);
                 Vec3 newPos = node.position + node.velocity * dt;
                 currentBladeWake.addNode({newPos, initialFreeStreamVel});
             }
@@ -494,6 +600,42 @@ namespace fvw
                 else
                 {
                     std::cerr << "Error: shedLineIndices out of bounds when storing new shed line index for blade " << b << ", segment " << i << " at t=" << currentTimestep << std::endl;
+                }
+            }
+        }
+
+        // Explicit predictor-corrector (Heun):
+        // x* = x^n + dt u^n
+        // x^{n+1} = x^n + 0.5*dt*(u^n + u*)
+        if (simParams.timeScheme == TimeMarchingScheme::PredictorCorrector)
+        {
+            std::vector<Vec3> allNodePositions;
+            std::vector<std::pair<int, int>> nodeGlobalIndices;
+            for (int b = 0; b < wake.nBlades; ++b)
+            {
+                const auto &nodes = wake.getNodes(currentTimestep, b);
+                for (size_t n_idx = 0; n_idx < nodes.size(); ++n_idx)
+                {
+                    allNodePositions.push_back(nodes[n_idx].position);
+                    nodeGlobalIndices.push_back({b, static_cast<int>(n_idx)});
+                }
+            }
+
+            if (!allNodePositions.empty())
+            {
+                std::vector<Vec3> inducedVelocities;
+                computeInducedVelocity(inducedVelocities, allNodePositions, wake, currentTimestep, geom, simParams);
+                for (size_t i = 0; i < inducedVelocities.size(); ++i)
+                {
+                    const int b = nodeGlobalIndices[i].first;
+                    const int localNodeIdx = nodeGlobalIndices[i].second;
+                    const int nConvected = convectedCountPerBlade[b];
+                    if (localNodeIdx >= nConvected) continue; // Newly added bound nodes are fixed by kinematics.
+
+                    const Vec3 uStar = initialFreeStreamVel + inducedVelocities[i];
+                    const Vec3 &xN = prevPositionsPerBlade[b][localNodeIdx];
+                    const Vec3 &uN = prevVelocitiesPerBlade[b][localNodeIdx];
+                    wake.getNodes(currentTimestep, b)[localNodeIdx].position = xN + (uN + uStar) * (0.5 * dt);
                 }
             }
         }
@@ -619,8 +761,16 @@ namespace fvw
                 {
                     double ex = vel_eff_blade_frame.x / vxy;
                     double ey = vel_eff_blade_frame.y / vxy;
-                    double L = 0.5 * turbineParams.rho * vxy * vxy * chord * cl_value;
-                    double D = 0.5 * turbineParams.rho * vxy * vxy * chord * cd_value;
+                    TipLossFactors tip_loss;
+                    double phi = 0.0;
+                    if (simParams.tipLossModel != TipLossModel::Off &&
+                        compute_phi(b, currentTimestep, i, pos, bxn, byn, bzn, vel_eff_blade_frame, phi))
+                    {
+                        tip_loss = compute_tip_loss_factors(geom.rShedding[i], phi, turbineParams, simParams);
+                    }
+
+                    double L = 0.5 * turbineParams.rho * vxy * vxy * chord * cl_value * tip_loss.lift_drag;
+                    double D = 0.5 * turbineParams.rho * vxy * vxy * chord * cd_value * tip_loss.lift_drag;
 
                     // Force in blade frame (x: chord, y: normal)
                     double fx_b = L * (-ey) + D * (-ex);
@@ -638,8 +788,8 @@ namespace fvw
                     double tan_norm = tangential_ics.norm();
                     if (tan_norm > 1e-12) tangential_ics = tangential_ics * (1.0 / tan_norm);
 
-                    perf.setFnAt(b, currentTimestep, i) = force_ics.dot(axis_ics);
-                    perf.setFtAt(b, currentTimestep, i) = force_ics.dot(tangential_ics);
+                    perf.setFnAt(b, currentTimestep, i) = force_ics.dot(axis_ics) * tip_loss.axial;
+                    perf.setFtAt(b, currentTimestep, i) = force_ics.dot(tangential_ics) * tip_loss.tangential;
                 }
                 else
                 {
@@ -647,7 +797,7 @@ namespace fvw
                     perf.setFtAt(b, currentTimestep, i) = 0.0;
                 }
 
-                double gamma_required = 0.5 * Vinf_eff * chord * cl_value; 
+                double gamma_required = 0.5 * Vinf_eff * chord * cl_value;
 
                 BladeWake &currentBladeWake = wake.getBladeWake(currentTimestep, b);
                 int boundLineIdx = currentBladeWake.boundLineIndices[i];

@@ -10,6 +10,7 @@
     "simulation": {
         "stepsPerRevolution": 80,
         "numRevolutions": 40.0,
+        "timeScheme": "Euler",
         "outputFrequency": 10,
         "coreType": "VanGarrel",
         "cutoffParam": 0.1,

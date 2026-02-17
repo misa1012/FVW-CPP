@@ -114,6 +114,28 @@ conda run -n post python tools/python/studies/cutoff/compare.py \
     --alm-dir /path/to/alm/case
 ```
 
+**Cutoff Postprocess (Cp/Ct + spanwise)**:
+```bash
+# Multi-case
+conda run -n post python tools/python/studies/cutoff/postprocess_cutoff.py \
+    --study-dir /path/to/cutoff_study --plots cp ct aoa cl fn ft
+
+# Single case
+conda run -n post python tools/python/studies/cutoff/postprocess_cutoff.py \
+    --case-dir /path/to/CASE_DIR --plots cp ct
+```
+
+**Cutoff Wake Plots (velocity deficit / vorticity)**:
+```bash
+# Multi-case
+conda run -n post python tools/python/studies/cutoff/wake_compare_cutoff.py \
+    --study-dir /path/to/cutoff_study --ppd 40 --xlim -0.5 2.0 --ylim -0.5 0.5
+
+# Single case
+conda run -n post python tools/python/studies/cutoff/wake_compare_cutoff.py \
+    --case-dir /path/to/CASE_DIR --ppd 40 --xlim -0.5 2.0 --ylim -0.5 0.5
+```
+
 ---
 **Tips:**
 - Use `-h` on any script to see available options.

@@ -36,6 +36,20 @@ namespace fvw
         AsymmetricStaticPitch // 非对称固定变桨
     };
 
+    // 定义时间推进格式
+    enum class TimeMarchingScheme
+    {
+        Euler,              // 一阶显式欧拉
+        PredictorCorrector, // 二阶显式预测-校正 (Heun)
+    };
+
+    // Tip/hub-loss correction model for load postprocessing (and optional gamma scaling)
+    enum class TipLossModel
+    {
+        Off,
+        Wimshurst,
+    };
+
     // *** 定义扰动参数 ***
     struct PerturbationParams
     {
@@ -77,6 +91,20 @@ namespace fvw
         bool logStepTiming = true;
         bool logVerbose = false;
         bool logPerf = false;
+
+        // Time marching scheme for wake convection
+        TimeMarchingScheme timeScheme = TimeMarchingScheme::Euler;
+
+        // Tip-loss correction model (default off).
+        TipLossModel tipLossModel = TipLossModel::Off;
+        // Wimshurst model parameters (matched to ALM-LES defaults).
+        double tipSpeedRatioShen = 6.0;
+        double c1Faxi = 0.1219;
+        double c2Faxi = 21.52;
+        double c3Faxi = 0.1;
+        double c1Ftan = 0.0984;
+        double c2Ftan = 13.026;
+        double c3Ftan = 0.1;
         
     };
 

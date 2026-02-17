@@ -25,6 +25,22 @@ const char* to_string(VortexCoreType t) {
     return "Unknown";
 }
 
+const char* to_string(TimeMarchingScheme t) {
+    switch (t) {
+        case TimeMarchingScheme::Euler: return "Euler";
+        case TimeMarchingScheme::PredictorCorrector: return "PredictorCorrector";
+    }
+    return "Unknown";
+}
+
+const char* to_string(TipLossModel t) {
+    switch (t) {
+        case TipLossModel::Off: return "Off";
+        case TipLossModel::Wimshurst: return "Wimshurst";
+    }
+    return "Unknown";
+}
+
 } // namespace
 
 SimulationRunner::SimulationRunner(const PerturbationConfig& pc,
@@ -114,7 +130,7 @@ void SimulationRunner::run() {
         }
         auto step_start = std::chrono::high_resolution_clock::now();
 
-        AdvanceWakeStructure(*m_wake, m_turbineParams, *m_pos, m_simParams.dt, t);
+        AdvanceWakeStructure(*m_wake, m_turbineParams, *m_pos, m_geom, m_simParams, t);
         kuttaJoukowskiIteration(*m_wake, *m_perf, m_geom, *m_axes, *m_pos, *m_velBCS, m_airfoils, m_turbineParams, m_simParams);
 
         if (m_simParams.vortexModel == VortexModelType::GammaDecay)
@@ -269,6 +285,15 @@ void SimulationRunner::print_run_summary_stdout() const {
     std::cout << "Output Freq  : " << m_simParams.outputFrequency << std::endl;
     std::cout << "Core Type    : " << to_string(m_simParams.coreType) << std::endl;
     std::cout << "Vortex Model : " << to_string(m_simParams.vortexModel) << std::endl;
+    std::cout << "Time Scheme  : " << to_string(m_simParams.timeScheme) << std::endl;
+    std::cout << "Tip Loss     : " << to_string(m_simParams.tipLossModel) << std::endl;
+    if (m_simParams.tipLossModel == TipLossModel::Wimshurst) {
+        std::cout << "  TSR(shen)  : " << m_simParams.tipSpeedRatioShen << std::endl;
+        std::cout << "  c1Faxi/c2Faxi/c3Faxi : "
+                  << m_simParams.c1Faxi << " / " << m_simParams.c2Faxi << " / " << m_simParams.c3Faxi << std::endl;
+        std::cout << "  c1Ftan/c2Ftan/c3Ftan : "
+                  << m_simParams.c1Ftan << " / " << m_simParams.c2Ftan << " / " << m_simParams.c3Ftan << std::endl;
+    }
     std::cout << "===================" << std::endl;
 }
 
