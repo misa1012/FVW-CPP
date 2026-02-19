@@ -47,6 +47,7 @@ namespace fvw
     enum class TipLossModel
     {
         Off,
+        Shen,
         Wimshurst,
     };
 
@@ -97,8 +98,16 @@ namespace fvw
 
         // Tip-loss correction model (default off).
         TipLossModel tipLossModel = TipLossModel::Off;
+        // New split controls:
+        // - tipLossModelForce: used for Fn/Ft load scaling
+        // - tipLossModelGamma: used for gamma target scaling in Kutta iteration
+        // If unset in config, parser falls back to legacy fields above.
+        TipLossModel tipLossModelForce = TipLossModel::Off;
+        TipLossModel tipLossModelGamma = TipLossModel::Off;
+        // If true, apply tip-loss factor to gamma target inside Kutta iteration
+        // (this changes wake evolution, not only postprocessed loads).
+        bool tipLossAffectsGamma = false;
         // Wimshurst model parameters (matched to ALM-LES defaults).
-        double tipSpeedRatioShen = 6.0;
         double c1Faxi = 0.1219;
         double c2Faxi = 21.52;
         double c3Faxi = 0.1;

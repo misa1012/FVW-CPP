@@ -47,8 +47,29 @@ namespace {
 
     TipLossModel parseTipLossModel(const std::string& s) {
         if (s == "Off") return TipLossModel::Off;
+        if (s == "Shen") return TipLossModel::Shen;
         if (s == "Wimshurst") return TipLossModel::Wimshurst;
         throw std::runtime_error("Unknown TipLossModel: " + s);
+    }
+
+    void applyTipLossModePreset(const std::string& s, SimParams& sim) {
+        if (s == "Off") {
+            sim.tipLossModelForce = TipLossModel::Off;
+            sim.tipLossModelGamma = TipLossModel::Off;
+        } else if (s == "WimshurstForce") {
+            sim.tipLossModelForce = TipLossModel::Wimshurst;
+            sim.tipLossModelGamma = TipLossModel::Off;
+        } else if (s == "ShenCirculation") {
+            sim.tipLossModelForce = TipLossModel::Off;
+            sim.tipLossModelGamma = TipLossModel::Shen;
+        } else {
+            throw std::runtime_error(
+                "Unknown tipLossMode: " + s +
+                " (valid: Off, WimshurstForce, ShenCirculation)");
+        }
+        // Keep legacy summary fields coherent.
+        sim.tipLossModel = sim.tipLossModelForce;
+        sim.tipLossAffectsGamma = (sim.tipLossModelGamma != TipLossModel::Off);
     }
 }
 
@@ -121,6 +142,7 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (turbineJson.contains("rHub")) config.turbine.rHub = turbineJson["rHub"].as_double();
     if (turbineJson.contains("rTip")) config.turbine.rTip = turbineJson["rTip"].as_double();
     if (turbineJson.contains("nBlades")) config.turbine.nBlades = turbineJson["nBlades"].as_int();
+    if (turbineJson.contains("hubHeight")) config.turbine.hubHeight = turbineJson["hubHeight"].as_double();
 
     config.turbine.windSpeed = turbineJson["windSpeed"].as_double();
     config.turbine.rho = turbineJson["rho"].as_double();
@@ -214,10 +236,39 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (simJson.contains("logVerbose")) config.sim.logVerbose = simJson["logVerbose"].as_bool();
     if (simJson.contains("logPerf")) config.sim.logPerf = simJson["logPerf"].as_bool();
     if (simJson.contains("timeScheme")) config.sim.timeScheme = parseTimeScheme(simJson["timeScheme"].as_string());
-    if (simJson.contains("tipLossModel")) {
-        config.sim.tipLossModel = parseTipLossModel(simJson["tipLossModel"].as_string());
+
+    // Preferred compact interface (single switch):
+    // tipLossMode in {Off, WimshurstForce, ShenCirculation}
+    if (simJson.contains("tipLossMode")) {
+        applyTipLossModePreset(simJson["tipLossMode"].as_string(), config.sim);
+    } else {
+        // Backward-compatible interface:
+        // - legacy: tipLossModel + tipLossAffectsGamma
+        // - explicit split: tipLossModelForce + tipLossModelGamma
+        if (simJson.contains("tipLossModel")) {
+            config.sim.tipLossModel = parseTipLossModel(simJson["tipLossModel"].as_string());
+        }
+        const bool has_force_model = simJson.contains("tipLossModelForce");
+        const bool has_gamma_model = simJson.contains("tipLossModelGamma");
+        if (has_force_model) {
+            config.sim.tipLossModelForce = parseTipLossModel(simJson["tipLossModelForce"].as_string());
+        }
+        if (has_gamma_model) {
+            config.sim.tipLossModelGamma = parseTipLossModel(simJson["tipLossModelGamma"].as_string());
+        }
+        if (simJson.contains("tipLossAffectsGamma")) config.sim.tipLossAffectsGamma = simJson["tipLossAffectsGamma"].as_bool();
+
+        // Legacy fallback behavior:
+        // - force model defaults to tipLossModel
+        // - gamma model defaults to tipLossModel only when tipLossAffectsGamma=true, else Off
+        if (!has_force_model) {
+            config.sim.tipLossModelForce = config.sim.tipLossModel;
+        }
+        if (!has_gamma_model) {
+            config.sim.tipLossModelGamma = config.sim.tipLossAffectsGamma ? config.sim.tipLossModel : TipLossModel::Off;
+        }
     }
-    if (simJson.contains("tipSpeedRatioShen")) config.sim.tipSpeedRatioShen = simJson["tipSpeedRatioShen"].as_double();
+
     if (simJson.contains("c1Faxi")) config.sim.c1Faxi = simJson["c1Faxi"].as_double();
     if (simJson.contains("c2Faxi")) config.sim.c2Faxi = simJson["c2Faxi"].as_double();
     if (simJson.contains("c3Faxi")) config.sim.c3Faxi = simJson["c3Faxi"].as_double();

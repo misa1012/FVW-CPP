@@ -100,6 +100,10 @@ if [ -z "$EXECUTABLE" ] || [ ! -x "$EXECUTABLE" ]; then
     exit 1
 fi
 
+# Ensure runtime CWD is the FVW project root so relative data paths resolve.
+PROJECT_ROOT="$(cd "$(dirname "$EXECUTABLE")/.." && pwd)"
+cd "$PROJECT_ROOT"
+
 echo "Running Simulation with $OMP_NUM_THREADS threads..."
 time $EXECUTABLE $CONFIG
 
