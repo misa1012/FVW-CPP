@@ -73,6 +73,39 @@ static Grid3D build_uniform_grid_3d(double x_start, double x_end,
     return g;
 }
 
+static Grid3D build_rotated_vertical_plane(double x_start, double x_end,
+                                           double s_min, double s_max,
+                                           double hub_height,
+                                           double alpha_deg,
+                                           double h)
+{
+    Grid3D g;
+    const double eps = 1e-9;
+    const double alpha = alpha_deg * M_PI / 180.0;
+    const double sa = std::sin(alpha);
+    const double ca = std::cos(alpha);
+
+    for (double x = x_start; x <= x_end + eps; x += h) g.x.push_back(x);
+    for (double s = s_min; s <= s_max + eps; s += h) g.y.push_back(s);
+    g.z.push_back(0.0);
+
+    g.Nx = (int)g.x.size();
+    g.Ny = (int)g.y.size();
+    g.Nz = 1;
+
+    g.points.reserve((size_t)g.Nx * g.Ny);
+    for (int j = 0; j < g.Ny; ++j) {
+        const double s = g.y[j];
+        const double y = s * sa;
+        const double z = hub_height + s * ca;
+        for (int i = 0; i < g.Nx; ++i) {
+            g.points.push_back({g.x[i], y, z});
+        }
+    }
+
+    return g;
+}
+
 int main(int argc, char** argv)
 {
     if (argc < 2) {
@@ -181,6 +214,11 @@ int main(int argc, char** argv)
     double z_min = hub_height - half_span;
     double z_max = hub_height + half_span;
     
+    double plane_angle_deg = 0.0;
+    if (argc >= 10) {
+        plane_angle_deg = std::stod(argv[9]);
+    }
+
     if (slice_mode == 1) {
         // Horizontal Slice (Z fixed)
         z_min = hub_height;
@@ -191,12 +229,19 @@ int main(int argc, char** argv)
         y_min = 0.0;
         y_max = 0.0;
         std::cout << "Slice Mode 2: Vertical Plane (Y = 0.0)\n";
+    } else if (slice_mode == 3) {
+        std::cout << "Slice Mode 3: Rotated Vertical Plane, alpha = " << plane_angle_deg << " deg\n";
     } else {
         std::cout << "Slice Mode 0: Full 3D Volume\n";
     }
 
     std::cout << "Building grid...\n";
-    Grid3D grid = build_uniform_grid_3d(x_start, x_end, y_min, y_max, z_min, z_max, h);
+    Grid3D grid;
+    if (slice_mode == 3) {
+        grid = build_rotated_vertical_plane(x_start, x_end, -half_span, half_span, hub_height, plane_angle_deg, h);
+    } else {
+        grid = build_uniform_grid_3d(x_start, x_end, y_min, y_max, z_min, z_max, h);
+    }
     std::cout << "Grid: Nx=" << grid.Nx << " Ny=" << grid.Ny << " Nz=" << grid.Nz
               << "  total=" << grid.points.size() << "\n";
 

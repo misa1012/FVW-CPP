@@ -37,7 +37,6 @@ const char* to_string(TipLossModel t) {
     switch (t) {
         case TipLossModel::Off: return "Off";
         case TipLossModel::Shen: return "Shen";
-        case TipLossModel::Wimshurst: return "Wimshurst";
     }
     return "Unknown";
 }
@@ -288,20 +287,6 @@ void SimulationRunner::print_run_summary_stdout() const {
     std::cout << "Vortex Model : " << to_string(m_simParams.vortexModel) << std::endl;
     std::cout << "Time Scheme  : " << to_string(m_simParams.timeScheme) << std::endl;
     std::cout << "Tip Loss     : " << to_string(m_simParams.tipLossModel) << std::endl;
-    std::cout << "  force model  : " << to_string(m_simParams.tipLossModelForce) << std::endl;
-    std::cout << "  gamma model  : " << to_string(m_simParams.tipLossModelGamma) << std::endl;
-    if (m_simParams.tipLossModelForce == TipLossModel::Wimshurst ||
-        m_simParams.tipLossModelGamma == TipLossModel::Wimshurst ||
-        m_simParams.tipLossModel == TipLossModel::Wimshurst ||
-        m_simParams.tipLossModelForce == TipLossModel::Shen ||
-        m_simParams.tipLossModelGamma == TipLossModel::Shen ||
-        m_simParams.tipLossModel == TipLossModel::Shen) {
-        std::cout << "  affects Gamma : " << (m_simParams.tipLossAffectsGamma ? "true" : "false") << std::endl;
-        std::cout << "  c1Faxi/c2Faxi/c3Faxi : "
-                  << m_simParams.c1Faxi << " / " << m_simParams.c2Faxi << " / " << m_simParams.c3Faxi << std::endl;
-        std::cout << "  c1Ftan/c2Ftan/c3Ftan : "
-                  << m_simParams.c1Ftan << " / " << m_simParams.c2Ftan << " / " << m_simParams.c3Ftan << std::endl;
-    }
     std::cout << "===================" << std::endl;
 }
 

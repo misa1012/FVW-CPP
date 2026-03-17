@@ -14,37 +14,6 @@ namespace fvw
 {
     namespace
     {
-        struct TipLossFactors
-        {
-            double lift_drag = 1.0; // scales lift/drag magnitude before projection
-            double axial = 1.0;     // scales Fn
-            double tangential = 1.0;// scales Ft
-        };
-
-        double wimshurst_tip_factor(
-            double r,
-            double phi,
-            const TurbineParams &turbineParams,
-            double c1,
-            double c2,
-            double c3,
-            double tip_speed_ratio_shen)
-        {
-            constexpr double pi = 3.14159265358979323846;
-            const double sin_phi = std::max(std::abs(std::sin(phi)), 1e-6);
-            const double r_safe = std::max(r, 1e-6);
-            const double b = static_cast<double>(turbineParams.nBlades);
-
-            const double g = std::exp(-c1 * ((b * tip_speed_ratio_shen) - c2)) + c3;
-            const double ftip = (turbineParams.rTip - r_safe) / (r_safe * sin_phi + 1e-12);
-            const double arg1 = -g * (b / 2.0) * ftip;
-            const double arg2 = std::exp(std::max(std::min(30.0, arg1), -30.0));
-            const double ftip_corr = (2.0 / pi) * std::acos(std::clamp(arg2, 0.0, 1.0));
-
-            if (!std::isfinite(ftip_corr) || ftip_corr <= 0.0) return 1.0;
-            return std::clamp(ftip_corr, 0.0, 1.0);
-        }
-
         // Shen-type single-factor tip correction (Wind Energy 2005; doi:10.1002/we.153)
         double shen_tip_factor(
             double r,
@@ -100,43 +69,20 @@ namespace fvw
             return std::isfinite(phi_out);
         }
 
-        TipLossFactors compute_tip_loss_factors(
+        double compute_tip_loss_factor(
             double r,
             double phi,
             const TurbineParams &turbineParams,
-            const SimParams &simParams,
             TipLossModel model)
         {
-            TipLossFactors factors;
             switch (model)
             {
                 case TipLossModel::Off:
-                    break;
+                    return 1.0;
                 case TipLossModel::Shen:
-                {
-                    const double f = shen_tip_factor(
-                        r, phi, turbineParams, turbineParams.tsr);
-                    factors.axial = f;
-                    factors.tangential = f;
-                    factors.lift_drag = 1.0;
-                    break;
-                }
-                case TipLossModel::Wimshurst:
-                {
-                    factors.axial = wimshurst_tip_factor(
-                        r, phi, turbineParams,
-                        simParams.c1Faxi, simParams.c2Faxi, simParams.c3Faxi,
-                        turbineParams.tsr);
-                    factors.tangential = wimshurst_tip_factor(
-                        r, phi, turbineParams,
-                        simParams.c1Ftan, simParams.c2Ftan, simParams.c3Ftan,
-                        turbineParams.tsr);
-                    // Match ALM behavior: Wimshurst does not scale lift/drag itself.
-                    factors.lift_drag = 1.0;
-                    break;
-                }
+                    return shen_tip_factor(r, phi, turbineParams, turbineParams.tsr);
             }
-            return factors;
+            return 1.0;
         }
     }
 
@@ -781,26 +727,21 @@ namespace fvw
                 double cl_value = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cl, aoa_deg);
                 double cd_value = interpolate(airfoils[airfoilIdx].aoa, airfoils[airfoilIdx].cd, aoa_deg);
 
-                perf.setAoaAt(b, currentTimestep, i) = aoa_deg;
-                perf.setClAt(b, currentTimestep, i) = cl_value;
-                perf.setCdAt(b, currentTimestep, i) = cd_value;
-
                 double chord = geom.chordShedding[i];
-                TipLossFactors tip_loss;
                 double phi = 0.0;
-                bool phi_ok = false;
-                const bool use_force_tip = simParams.tipLossModelForce != TipLossModel::Off;
-                const bool use_gamma_tip = simParams.tipLossModelGamma != TipLossModel::Off;
-                if ((use_force_tip || use_gamma_tip) &&
+                double tip_factor = 1.0;
+                if (simParams.tipLossModel != TipLossModel::Off &&
                     compute_phi(b, currentTimestep, i, pos, bxn, byn, bzn, vel_eff_blade_frame, phi))
                 {
-                    phi_ok = true;
-                    if (use_force_tip)
-                    {
-                        tip_loss = compute_tip_loss_factors(
-                            geom.rShedding[i], phi, turbineParams, simParams, simParams.tipLossModelForce);
-                    }
+                    tip_factor = std::clamp(
+                        compute_tip_loss_factor(geom.rShedding[i], phi, turbineParams, simParams.tipLossModel),
+                        0.0, 1.0);
                 }
+                const double cl_effective = cl_value * tip_factor;
+
+                perf.setAoaAt(b, currentTimestep, i) = aoa_deg;
+                perf.setClAt(b, currentTimestep, i) = cl_effective;
+                perf.setCdAt(b, currentTimestep, i) = cd_value;
 
                 // Compute rotor-normal/tangential force per unit span (N/m)
                 double vxy = std::sqrt(vel_eff_blade_frame.x * vel_eff_blade_frame.x +
@@ -810,8 +751,8 @@ namespace fvw
                     double ex = vel_eff_blade_frame.x / vxy;
                     double ey = vel_eff_blade_frame.y / vxy;
 
-                    double L = 0.5 * turbineParams.rho * vxy * vxy * chord * cl_value * tip_loss.lift_drag;
-                    double D = 0.5 * turbineParams.rho * vxy * vxy * chord * cd_value * tip_loss.lift_drag;
+                    double L = 0.5 * turbineParams.rho * vxy * vxy * chord * cl_effective;
+                    double D = 0.5 * turbineParams.rho * vxy * vxy * chord * cd_value;
 
                     // Force in blade frame (x: chord, y: normal)
                     double fx_b = L * (-ey) + D * (-ex);
@@ -829,8 +770,8 @@ namespace fvw
                     double tan_norm = tangential_ics.norm();
                     if (tan_norm > 1e-12) tangential_ics = tangential_ics * (1.0 / tan_norm);
 
-                    perf.setFnAt(b, currentTimestep, i) = force_ics.dot(axis_ics) * tip_loss.axial;
-                    perf.setFtAt(b, currentTimestep, i) = force_ics.dot(tangential_ics) * tip_loss.tangential;
+                    perf.setFnAt(b, currentTimestep, i) = force_ics.dot(axis_ics);
+                    perf.setFtAt(b, currentTimestep, i) = force_ics.dot(tangential_ics);
                 }
                 else
                 {
@@ -838,20 +779,7 @@ namespace fvw
                     perf.setFtAt(b, currentTimestep, i) = 0.0;
                 }
 
-                double gamma_required = 0.5 * Vinf_eff * chord * cl_value;
-                if (simParams.tipLossModelGamma != TipLossModel::Off)
-                {
-                    // Couple selected tip-loss model directly into circulation target
-                    // so wake evolution changes in a controlled way.
-                    double gamma_scale = 1.0;
-                    if (phi_ok)
-                    {
-                        const TipLossFactors tip_gamma = compute_tip_loss_factors(
-                            geom.rShedding[i], phi, turbineParams, simParams, simParams.tipLossModelGamma);
-                        gamma_scale = std::clamp(tip_gamma.axial, 0.0, 1.0);
-                    }
-                    gamma_required *= gamma_scale;
-                }
+                double gamma_required = 0.5 * Vinf_eff * chord * cl_effective;
 
                 BladeWake &currentBladeWake = wake.getBladeWake(currentTimestep, b);
                 int boundLineIdx = currentBladeWake.boundLineIndices[i];

@@ -48,28 +48,19 @@ namespace {
     TipLossModel parseTipLossModel(const std::string& s) {
         if (s == "Off") return TipLossModel::Off;
         if (s == "Shen") return TipLossModel::Shen;
-        if (s == "Wimshurst") return TipLossModel::Wimshurst;
-        throw std::runtime_error("Unknown TipLossModel: " + s);
+        throw std::runtime_error("Unknown TipLossModel: " + s + " (valid: Off, Shen)");
     }
 
     void applyTipLossModePreset(const std::string& s, SimParams& sim) {
         if (s == "Off") {
-            sim.tipLossModelForce = TipLossModel::Off;
-            sim.tipLossModelGamma = TipLossModel::Off;
-        } else if (s == "WimshurstForce") {
-            sim.tipLossModelForce = TipLossModel::Wimshurst;
-            sim.tipLossModelGamma = TipLossModel::Off;
-        } else if (s == "ShenCirculation") {
-            sim.tipLossModelForce = TipLossModel::Off;
-            sim.tipLossModelGamma = TipLossModel::Shen;
+            sim.tipLossModel = TipLossModel::Off;
+        } else if (s == "Shen") {
+            sim.tipLossModel = TipLossModel::Shen;
         } else {
             throw std::runtime_error(
                 "Unknown tipLossMode: " + s +
-                " (valid: Off, WimshurstForce, ShenCirculation)");
+                " (valid: Off, Shen)");
         }
-        // Keep legacy summary fields coherent.
-        sim.tipLossModel = sim.tipLossModelForce;
-        sim.tipLossAffectsGamma = (sim.tipLossModelGamma != TipLossModel::Off);
     }
 }
 
@@ -238,34 +229,14 @@ GlobalConfig ConfigLoader::load(const std::string& filepath) {
     if (simJson.contains("timeScheme")) config.sim.timeScheme = parseTimeScheme(simJson["timeScheme"].as_string());
 
     // Preferred compact interface (single switch):
-    // tipLossMode in {Off, WimshurstForce, ShenCirculation}
+    // tipLossMode in {Off, Shen}
     if (simJson.contains("tipLossMode")) {
         applyTipLossModePreset(simJson["tipLossMode"].as_string(), config.sim);
     } else {
-        // Backward-compatible interface:
-        // - legacy: tipLossModel + tipLossAffectsGamma
-        // - explicit split: tipLossModelForce + tipLossModelGamma
+        // Direct model interface:
+        // tipLossModel in {Off, Shen}
         if (simJson.contains("tipLossModel")) {
             config.sim.tipLossModel = parseTipLossModel(simJson["tipLossModel"].as_string());
-        }
-        const bool has_force_model = simJson.contains("tipLossModelForce");
-        const bool has_gamma_model = simJson.contains("tipLossModelGamma");
-        if (has_force_model) {
-            config.sim.tipLossModelForce = parseTipLossModel(simJson["tipLossModelForce"].as_string());
-        }
-        if (has_gamma_model) {
-            config.sim.tipLossModelGamma = parseTipLossModel(simJson["tipLossModelGamma"].as_string());
-        }
-        if (simJson.contains("tipLossAffectsGamma")) config.sim.tipLossAffectsGamma = simJson["tipLossAffectsGamma"].as_bool();
-
-        // Legacy fallback behavior:
-        // - force model defaults to tipLossModel
-        // - gamma model defaults to tipLossModel only when tipLossAffectsGamma=true, else Off
-        if (!has_force_model) {
-            config.sim.tipLossModelForce = config.sim.tipLossModel;
-        }
-        if (!has_gamma_model) {
-            config.sim.tipLossModelGamma = config.sim.tipLossAffectsGamma ? config.sim.tipLossModel : TipLossModel::Off;
         }
     }
 
